@@ -1,0 +1,186 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:math';
+
+import 'package:flutter/foundation.dart';
+import 'package:mpv_audio_kit/mpv_audio_kit.dart';
+
+import '../models/models.dart' show Song;
+import 'library.dart';
+
+/// Wraps the mpv player: queue, transport, shuffle/repeat, lock screen.
+/// Position is NOT pushed through notifyListeners (it changes many times a
+/// second); widgets that need it listen to [positionStream] directly.
+class PlayerService extends ChangeNotifier {
+  PlayerService(this._library);
+
+  final Library _library;
+  final Player player = Player();
+  final List<StreamSubscription<Object?>> _subs = [];
+
+  List<Song> queue = const [];
+  int index = -1;
+  bool playing = false;
+  bool shuffle = false;
+  Loop loop = Loop.off;
+  Duration duration = Duration.zero;
+  CoverArt? cover;
+  double volume = 100;
+
+  /// Id of the song playing now. Song rows listen to just this.
+  final ValueNotifier<String?> currentId = ValueNotifier(null);
+
+  /// Last playback error, shown once by the UI.
+  final ValueNotifier<String?> errors = ValueNotifier(null);
+
+  Song? get current => index >= 0 && index < queue.length ? queue[index] : null;
+  Stream<Duration> get positionStream => player.stream.position;
+  Duration get position => player.state.playback.position;
+
+  Future<void> init() async {
+    _subs.add(player.stream.playlist.listen(_onPlaylist));
+    _subs.add(player.stream.playing.listen((v) {
+      playing = v;
+      notifyListeners();
+    }));
+    _subs.add(player.stream.shuffle.listen((v) {
+      shuffle = v;
+      notifyListeners();
+    }));
+    _subs.add(player.stream.loop.listen((v) {
+      loop = v;
+      notifyListeners();
+    }));
+    _subs.add(player.stream.duration.listen((v) {
+      duration = v;
+      notifyListeners();
+    }));
+    _subs.add(player.stream.coverArt.listen((v) {
+      cover = v;
+      notifyListeners();
+    }));
+    _subs.add(player.stream.volume.listen((v) {
+      volume = v;
+      notifyListeners();
+    }));
+    _subs.add(player.stream.error.listen((e) {
+      if (e is EndFileError) {
+        errors.value = 'Couldn\'t play a song: ${e.message}';
+      }
+    }));
+
+    // Visualizer feed: 20 bands, ~20 fps. The FFT only runs while the
+    // visualizer is on screen (the stream is lazy).
+    player.setSpectrum(const SpectrumSettings(
+      bandCount: 20,
+      bandLowHz: 40,
+      bandHighHz: 16000,
+      emitInterval: Duration(milliseconds: 50),
+      attackSmoothing: 0.6,
+      releaseSmoothing: 0.18,
+    ));
+
+    // Lock screen, Control Center, AirPods, Windows media keys.
+    await player.setMediaSession(const MediaSession(
+      appName: 'Starloom',
+      actions: {
+        MediaAction.play,
+        MediaAction.pause,
+        MediaAction.playPause,
+        MediaAction.next,
+        MediaAction.previous,
+        MediaAction.seek,
+        MediaAction.setShuffle,
+        MediaAction.setRepeatMode,
+      },
+    ));
+  }
+
+  void _onPlaylist(Playlist pl) {
+    final songs = <Song>[];
+    var newIndex = -1;
+    for (var i = 0; i < pl.items.length; i++) {
+      final id = pl.items[i].extras?['id'];
+      final song = id is String ? _library.byId(id) : null;
+      if (song == null) continue;
+      if (i == pl.index) newIndex = songs.length;
+      songs.add(song);
+    }
+    queue = songs;
+    index = newIndex;
+    currentId.value = current?.id;
+    notifyListeners();
+  }
+
+  Media _media(Song s) => Media(
+        Uri.file(s.path, windows: Platform.isWindows).toString(),
+        extras: {'id': s.id, 'title': s.title, 'artist': s.artist, 'album': s.album},
+      );
+
+  /// Replace the queue with [songs] and start at [start].
+  Future<void> playSongs(List<Song> songs, int start, {bool shuffled = false}) async {
+    if (songs.isEmpty) return;
+    var list = songs;
+    var at = start.clamp(0, songs.length - 1);
+    if (shuffled) {
+      list = List<Song>.of(songs)..shuffle(Random());
+      at = 0;
+    }
+    if (shuffle) await player.setShuffle(false);
+    await player.openAll(list.map(_media).toList(), index: at, play: true);
+  }
+
+  Future<void> togglePlay() async {
+    if (current == null) return;
+    playing ? await player.pause() : await player.play();
+  }
+
+  Future<void> next() async {
+    await player.next();
+  }
+
+  /// Like most players: restart the song if we're past 3 s, else go back.
+  Future<void> previous() async {
+    if (position > const Duration(seconds: 3) || index <= 0) {
+      await player.seek(Duration.zero);
+    } else {
+      await player.previous();
+    }
+  }
+
+  Future<void> seek(Duration d) => player.seek(d);
+
+  Future<void> jumpTo(int i) => player.jump(i);
+
+  Future<void> toggleShuffle() => player.setShuffle(!shuffle);
+
+  Future<void> cycleLoop() {
+    final nextLoop = switch (loop) {
+      Loop.off => Loop.playlist,
+      Loop.playlist => Loop.file,
+      _ => Loop.off,
+    };
+    return player.setLoop(nextLoop);
+  }
+
+  Future<void> playNext(Song s) async {
+    if (current == null) return playSongs([s], 0);
+    await player.insert(player.state.playback.playlist.index + 1, _media(s));
+  }
+
+  Future<void> addToQueue(Song s) async {
+    if (current == null) return playSongs([s], 0);
+    await player.add(_media(s));
+  }
+
+  Future<void> setVolume(double v) => player.setVolume(v.clamp(0, 100).toDouble());
+
+  @override
+  void dispose() {
+    for (final s in _subs) {
+      s.cancel();
+    }
+    player.dispose();
+    super.dispose();
+  }
+}

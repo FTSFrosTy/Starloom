@@ -1,0 +1,98 @@
+name: Build Starloom
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    name: iPhone (.ipa, unsigned)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Versions
+        run: |
+          flutter --version
+          xcodebuild -version
+
+      - name: Generate iOS project
+        run: |
+          flutter create --platforms=ios --org com.ftsfrosty --project-name starloom .
+          rm -f test/widget_test.dart
+          bash tool/ios/patch_ios.sh
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Check code
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Build
+        run: flutter build ios --release --no-codesign
+
+      - name: Package .ipa
+        run: |
+          cd build/ios/iphoneos
+          rm -rf Payload
+          mkdir Payload
+          cp -R Runner.app Payload/
+          zip -qry Starloom.ipa Payload
+          ls -lh Starloom.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Starloom-iPhone
+          path: build/ios/iphoneos/Starloom.ipa
+          retention-days: 14
+
+  windows:
+    name: Windows (.exe)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Windows project
+        shell: pwsh
+        run: |
+          flutter create --platforms=windows --org com.ftsfrosty --project-name starloom .
+          Remove-Item -ErrorAction SilentlyContinue test/widget_test.dart
+          Copy-Item tool/icon/app_icon.ico windows/runner/resources/app_icon.ico -Force
+          (Get-Content windows/runner/main.cpp) -replace 'L"starloom"', 'L"Starloom"' | Set-Content windows/runner/main.cpp
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Build
+        run: flutter build windows --release
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $out = "build/windows/x64/runner/Release"
+          Rename-Item "$out/starloom.exe" "Starloom.exe" -ErrorAction SilentlyContinue
+          Compress-Archive -Path "$out/*" -DestinationPath Starloom-Windows.zip
+          Get-Item Starloom-Windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Starloom-Windows
+          path: Starloom-Windows.zip
+          retention-days: 14
