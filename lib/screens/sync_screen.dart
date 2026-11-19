@@ -39,10 +39,12 @@ class _SyncScreenState extends State<SyncScreen> {
       await sync.loadPcLibrary();
       final here = await sync.missingHere();
       final there = await sync.missingOnPc();
-      if (mounted) setState(() {
-        _missingHere = here;
-        _missingThere = there;
-      });
+      if (mounted) {
+        setState(() {
+          _missingHere = here;
+          _missingThere = there;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     }
