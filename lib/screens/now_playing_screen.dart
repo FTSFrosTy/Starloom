@@ -142,7 +142,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                           const SizedBox(height: 10),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 20),
-                            child: CandleVisualizer(player: player.player, height: 64),
+                            child: CandleVisualizer(player: player.player, height: 110),
                           ),
                           const SizedBox(height: 6),
                           Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Scrubber(player: player)),

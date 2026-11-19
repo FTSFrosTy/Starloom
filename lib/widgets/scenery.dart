@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:mpv_audio_kit/mpv_audio_kit.dart';
 
 import '../theme/palette.dart';
@@ -274,9 +274,14 @@ class _SetPainter extends CustomPainter {
   bool shouldRepaint(_SetPainter old) => true; // cheap; also picks up theme switches
 }
 
-/// A row of clay candles whose flames jump with the music.
+/// A shelf of clay candles whose flames leap with the music.
+///
+/// Each candle follows a slice of the spectrum. Flames are drawn in three
+/// layers (deep orange, gold, white-hot core) on a warm additive glow, the
+/// whole shelf brightens with the bass, and loud hits flick embers upward.
+/// Runs at full frame rate only while it's on screen and music is moving.
 class CandleVisualizer extends StatefulWidget {
-  const CandleVisualizer({super.key, required this.player, this.height = 90});
+  const CandleVisualizer({super.key, required this.player, this.height = 120});
 
   final Player player;
   final double height;
@@ -285,21 +290,88 @@ class CandleVisualizer extends StatefulWidget {
   State<CandleVisualizer> createState() => _CandleVisualizerState();
 }
 
-class _CandleVisualizerState extends State<CandleVisualizer> {
-  final ValueNotifier<Float32List?> _bands = ValueNotifier(null);
+class _Ember {
+  _Ember(this.x, this.y, this.vx, this.vy, this.life, this.size);
+  double x, y, vx, vy, life, size;
+}
+
+class _CandleVisualizerState extends State<CandleVisualizer> with SingleTickerProviderStateMixin {
+  static const count = 12;
+  final _target = List<double>.filled(count, 0);
+  final _level = List<double>.filled(count, 0);
+  final _peak = List<double>.filled(count, 0);
+  final _embers = <_Ember>[];
+  final _rnd = math.Random();
+  final _repaint = ValueNotifier<int>(0);
+  double _bass = 0, _bassTarget = 0, _time = 0;
   StreamSubscription<FftFrame>? _sub;
+  late final Ticker _ticker = createTicker(_tick);
+  Duration _last = Duration.zero;
 
   @override
   void initState() {
     super.initState();
     // Subscribing starts the FFT; cancelling (leaving the screen) stops it.
-    _sub = widget.player.stream.fft.listen((frame) => _bands.value = frame.bands);
+    _sub = widget.player.stream.fft.listen(_onFrame);
+    _ticker.start();
+  }
+
+  void _onFrame(FftFrame frame) {
+    final data = frame.bands;
+    if (data.isEmpty) return;
+    for (var i = 0; i < count; i++) {
+      final from = (i * data.length / count).floor();
+      final to = math.max(from + 1, ((i + 1) * data.length / count).floor());
+      var v = 0.0;
+      for (var j = from; j < to && j < data.length; j++) {
+        v = math.max(v, data[j]);
+      }
+      // Lift quiet treble so the right-hand candles still dance.
+      _target[i] = math.pow(v.clamp(0.0, 1.0), 0.75).toDouble() * (1 + i * 0.03);
+    }
+    _bassTarget = data.length >= 3 ? (data[0] + data[1] + data[2]) / 3 : data[0];
+  }
+
+  void _tick(Duration now) {
+    final dt = ((now - _last).inMicroseconds / 1e6).clamp(0.0, 0.05);
+    _last = now;
+    _time += dt;
+    var moving = false;
+    for (var i = 0; i < count; i++) {
+      // Fast rise, slower fall: reads clearly as a beat, then settles.
+      final t = _target[i];
+      final k = t > _level[i] ? 22.0 : 7.0;
+      _level[i] += (t - _level[i]) * math.min(1.0, k * dt);
+      if (_level[i] > _peak[i]) {
+        // A sharp jump throws a couple of embers.
+        if (_level[i] - _peak[i] > 0.18 && _embers.length < 60) {
+          for (var e = 0; e < 2 + _rnd.nextInt(3); e++) {
+            _embers.add(_Ember(i + 0.5 + (_rnd.nextDouble() - 0.5) * 0.4, 0, (_rnd.nextDouble() - 0.5) * 0.9,
+                1.2 + _rnd.nextDouble() * 1.6 + _level[i], 1, 1.2 + _rnd.nextDouble() * 1.8));
+          }
+        }
+        _peak[i] = _level[i];
+      } else {
+        _peak[i] = math.max(0.0, _peak[i] - dt * 0.6);
+      }
+      if (_level[i] > 0.01 || t > 0.01) moving = true;
+    }
+    _bass += (_bassTarget - _bass) * math.min(1.0, (_bassTarget > _bass ? 18 : 5) * dt);
+    for (final e in _embers) {
+      e.x += e.vx * dt + math.sin(_time * 6 + e.size * 10) * 0.25 * dt;
+      e.y += e.vy * dt;
+      e.vy *= 0.985;
+      e.life -= dt * 0.9;
+    }
+    _embers.removeWhere((e) => e.life <= 0);
+    if (moving || _embers.isNotEmpty) _repaint.value++;
   }
 
   @override
   void dispose() {
+    _ticker.dispose();
     _sub?.cancel();
-    _bands.dispose();
+    _repaint.dispose();
     super.dispose();
   }
 
@@ -308,76 +380,127 @@ class _CandleVisualizerState extends State<CandleVisualizer> {
     return SizedBox(
       height: widget.height,
       width: double.infinity,
-      child: RepaintBoundary(child: CustomPaint(painter: _CandlePainter(_bands))),
+      child: RepaintBoundary(child: CustomPaint(painter: _CandlePainter(this))),
     );
   }
 }
 
 class _CandlePainter extends CustomPainter {
-  _CandlePainter(this.bands) : super(repaint: bands);
+  _CandlePainter(this.s) : super(repaint: s._repaint);
 
-  final ValueNotifier<Float32List?> bands;
+  final _CandleVisualizerState s;
+
+  static const _deep = Color(0xFFD9441A);
+  static const _orange = Color(0xFFFF8A1F);
+  static const _gold = Color(0xFFFFC94A);
+  static const _core = Color(0xFFFFF6D8);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final data = bands.value;
-    const count = 14;
+    const count = _CandleVisualizerState.count;
     final slot = size.width / count;
-    final waxW = slot * 0.42;
-    final baseY = size.height;
+    final shelfY = size.height - 10;
+    final waxW = slot * 0.46;
+    final bass = s._bass.clamp(0.0, 1.0);
+
+    // Warm backlight that swells with the bass, so the flames read on any theme.
+    final glowRect = Rect.fromLTWH(-size.width * 0.1, size.height * 0.05, size.width * 1.2, size.height * 1.4);
+    canvas.drawOval(
+      glowRect,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          Offset(size.width / 2, shelfY),
+          size.width * 0.62,
+          [const Color(0xFF3A1606).withValues(alpha: 0.55 + 0.25 * bass), const Color(0xFF3A1606).withValues(alpha: 0)],
+        ),
+    );
+    canvas.drawOval(
+      glowRect,
+      Paint()
+        ..blendMode = BlendMode.plus
+        ..shader = ui.Gradient.radial(
+          Offset(size.width / 2, shelfY - size.height * 0.2),
+          size.width * (0.42 + 0.18 * bass),
+          [_orange.withValues(alpha: 0.10 + 0.32 * bass), _orange.withValues(alpha: 0)],
+        ),
+    );
+
+    // Clay shelf the candles stand on, lit warm from above.
+    final shelf = RRect.fromRectAndRadius(Rect.fromLTWH(4, shelfY - 2, size.width - 8, 12), const Radius.circular(6));
+    canvas.drawRRect(
+      shelf,
+      Paint()..shader = ui.Gradient.linear(Offset(0, shelfY - 2), Offset(0, shelfY + 10), [const Color(0xFF6A3A1E), const Color(0xFF2A1408)]),
+    );
+
+    final glow = Paint()..blendMode = BlendMode.plus;
     final wax = Paint();
     for (var i = 0; i < count; i++) {
-      double level = 0;
-      if (data != null && data.isNotEmpty) {
-        final from = (i * data.length / count).floor();
-        final to = math.max(from + 1, ((i + 1) * data.length / count).floor());
-        for (var j = from; j < to && j < data.length; j++) {
-          level = math.max(level, data[j]);
-        }
-      }
-      // Quantize so the flames move in little stop-motion steps.
-      level = (level.clamp(0.0, 1.0) * 6).round() / 6;
-
+      final level = s._level[i].clamp(0.0, 1.2);
       final cx = slot * (i + 0.5);
-      final waxH = size.height * (0.22 + 0.1 * (clayNoise(i, 3, 3) * 0.5 + 0.5));
-      final waxRect = RRect.fromRectAndCorners(
-        Rect.fromLTWH(cx - waxW / 2, baseY - waxH, waxW, waxH),
-        topLeft: Radius.circular(waxW * 0.4),
-        topRight: Radius.circular(waxW * 0.3),
-      );
-      wax.shader = ui.Gradient.linear(
-        Offset(cx - waxW / 2, 0),
-        Offset(cx + waxW / 2, 0),
-        [const Color(0xFFF6EEDC), const Color(0xFFCBBFA8)],
-      );
-      canvas.drawRRect(waxRect, wax);
-      // A drip.
-      canvas.drawCircle(Offset(cx - waxW * 0.2, baseY - waxH + waxW * 0.55), waxW * 0.14, Paint()..color = const Color(0xFFE9E0CC));
+      final waxH = size.height * (0.22 + 0.08 * (clayNoise(i, 3, 3) * 0.5 + 0.5));
+      final top = shelfY - waxH;
 
-      // Flame: a teardrop that grows with the band's level.
-      final fh = size.height * (0.1 + 0.55 * level);
-      final fw = waxW * (0.55 + 0.5 * level);
-      final tip = Offset(cx + clayNoise(i, 9, (level * 6).round()) * fw * 0.25, baseY - waxH - fh - 4);
-      final bottom = Offset(cx, baseY - waxH - 3);
-      final flame = Path()
-        ..moveTo(tip.dx, tip.dy)
-        ..quadraticBezierTo(cx + fw * 0.9, bottom.dy - fh * 0.35, bottom.dx, bottom.dy)
-        ..quadraticBezierTo(cx - fw * 0.9, bottom.dy - fh * 0.35, tip.dx, tip.dy)
-        ..close();
-      canvas.drawCircle(
-        Offset(cx, bottom.dy - fh * 0.35),
-        fw * 1.6,
-        Paint()..color = Clay.candle.withValues(alpha: 0.10 + 0.15 * level),
+      // Wax, lit from the flame side.
+      wax.shader = ui.Gradient.linear(Offset(cx - waxW / 2, 0), Offset(cx + waxW / 2, 0),
+          [const Color(0xFFF8EEDA), Color.lerp(const Color(0xFFCDBEA4), const Color(0xFFFFD8A0), level * 0.6)!]);
+      canvas.drawRRect(
+        RRect.fromRectAndCorners(Rect.fromLTWH(cx - waxW / 2, top, waxW, waxH),
+            topLeft: Radius.circular(waxW * 0.45), topRight: Radius.circular(waxW * 0.3)),
+        wax,
       );
-      canvas.drawPath(
-        flame,
-        Paint()..shader = ui.Gradient.linear(tip, bottom, [Clay.candle, Clay.pumpkin]),
-      );
+      canvas.drawCircle(Offset(cx - waxW * 0.22, top + waxW * 0.6), waxW * 0.15, Paint()..color = const Color(0xFFEFE4CE));
+      canvas.drawLine(Offset(cx, top), Offset(cx, top - 4), Paint()
+        ..color = const Color(0xFF2A1A10)
+        ..strokeWidth = 1.6);
+
+      // Flame: tall and wide when loud, a small bead when quiet.
+      final fh = size.height * (0.10 + 0.52 * level);
+      final fw = waxW * (0.55 + 0.55 * level);
+      final sway = math.sin(s._time * (7 + i) + i) * fw * 0.18 * (0.4 + level);
+      final base = Offset(cx, top - 3);
+      final tip = Offset(cx + sway, base.dy - fh);
+
+      // Halo.
+      glow.shader = ui.Gradient.radial(Offset(cx, base.dy - fh * 0.4), fw * (1.6 + level * 1.4),
+          [_gold.withValues(alpha: 0.22 + 0.45 * level), _orange.withValues(alpha: 0)]);
+      canvas.drawCircle(Offset(cx, base.dy - fh * 0.4), fw * (1.6 + level * 1.4), glow);
+
+      _flame(canvas, base, tip, fw, Paint()..color = _deep.withValues(alpha: 0.95));
+      _flame(canvas, base.translate(0, -1), Offset.lerp(base, tip, 0.82)!, fw * 0.72, Paint()..color = _orange);
+      _flame(canvas, base.translate(0, -2), Offset.lerp(base, tip, 0.58)!, fw * 0.46, Paint()..color = _gold);
+      _flame(canvas, base.translate(0, -2), Offset.lerp(base, tip, 0.32)!, fw * 0.24, Paint()..color = _core);
+
+      // Peak marker: a tiny spark that hangs at the recent high, then sinks.
+      final peakY = base.dy - size.height * (0.10 + 0.52 * s._peak[i].clamp(0.0, 1.2)) - 6;
+      if (s._peak[i] > 0.08) {
+        canvas.drawCircle(Offset(cx, peakY), 1.8, Paint()
+          ..blendMode = BlendMode.plus
+          ..color = _gold.withValues(alpha: 0.8));
+      }
+    }
+
+    // Embers rising off loud hits.
+    final ember = Paint()..blendMode = BlendMode.plus;
+    for (final e in s._embers) {
+      final x = e.x * slot;
+      final y = shelfY - size.height * 0.35 - e.y * size.height * 0.45;
+      ember.color = Color.lerp(_deep, _gold, e.life)!.withValues(alpha: (e.life * 1.2).clamp(0.0, 1.0));
+      canvas.drawCircle(Offset(x, y), e.size * (0.5 + e.life * 0.5), ember);
     }
   }
 
+  void _flame(Canvas canvas, Offset base, Offset tip, double w, Paint paint) {
+    final h = base.dy - tip.dy;
+    final path = Path()
+      ..moveTo(tip.dx, tip.dy)
+      ..cubicTo(tip.dx + w * 0.25, tip.dy + h * 0.35, base.dx + w * 0.75, base.dy - h * 0.35, base.dx, base.dy)
+      ..cubicTo(base.dx - w * 0.75, base.dy - h * 0.35, tip.dx - w * 0.25, tip.dy + h * 0.35, tip.dx, tip.dy)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
   @override
-  bool shouldRepaint(_CandlePainter old) => old.bands != bands;
+  bool shouldRepaint(_CandlePainter old) => false;
 }
 
 /// A hand-pressed clay record that turns (in 12 fps steps) while playing,
