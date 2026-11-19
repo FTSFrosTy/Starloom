@@ -11,12 +11,18 @@ class PlaylistStore extends ChangeNotifier {
   final Storage _storage;
   final List<Playlist> playlists = [];
 
+  /// Deleted playlist ids and when, so a sync doesn't bring them back.
+  final Map<String, int> deleted = {};
+
   Future<void> init() async {
     final raw = await _storage.read('playlists.json');
-    if (raw is List) {
-      for (final p in raw) {
-        playlists.add(Playlist.fromJson((p as Map).cast<String, Object?>()));
-      }
+    // Old format: a plain list. New: {playlists: [...], deleted: {...}}.
+    final list = raw is List ? raw : (raw is Map ? (raw['playlists'] as List? ?? const []) : const []);
+    for (final p in list) {
+      playlists.add(Playlist.fromJson((p as Map).cast<String, Object?>()));
+    }
+    if (raw is Map && raw['deleted'] is Map) {
+      (raw['deleted'] as Map).forEach((k, v) => deleted[k as String] = (v as num).toInt());
     }
     notifyListeners();
   }
@@ -24,7 +30,39 @@ class PlaylistStore extends ChangeNotifier {
   Future<void> _save([Playlist? changed]) async {
     changed?.touch();
     notifyListeners();
-    await _storage.write('playlists.json', playlists.map((p) => p.toJson()).toList());
+    await _storage.write('playlists.json', {
+      'playlists': playlists.map((p) => p.toJson()).toList(),
+      'deleted': deleted,
+    });
+  }
+
+  /// Replace everything (after a sync merge).
+  Future<void> replaceAll(List<Playlist> lists, Map<String, int> tombstones) async {
+    playlists
+      ..clear()
+      ..addAll(lists);
+    deleted
+      ..clear()
+      ..addAll(tombstones);
+    await _save();
+  }
+
+  /// Turns `key:` placeholders (songs that arrived by sync before their
+  /// file did) into real song ids once the file is in the library.
+  Future<void> resolvePending(String? Function(String key) idForKey) async {
+    var changed = false;
+    for (final pl in playlists) {
+      for (var i = 0; i < pl.songIds.length; i++) {
+        final id = pl.songIds[i];
+        if (!id.startsWith('key:')) continue;
+        final real = idForKey(id.substring(4));
+        if (real != null) {
+          pl.songIds[i] = real;
+          changed = true;
+        }
+      }
+    }
+    if (changed) await _save();
   }
 
   Playlist? byId(String id) => playlists.where((p) => p.id == id).firstOrNull;
@@ -49,6 +87,7 @@ class PlaylistStore extends ChangeNotifier {
 
   Future<void> delete(Playlist pl) async {
     playlists.remove(pl);
+    deleted[pl.id] = DateTime.now().millisecondsSinceEpoch;
     await _save();
   }
 

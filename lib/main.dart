@@ -12,6 +12,7 @@ import 'services/library.dart';
 import 'services/player_service.dart';
 import 'services/playlists.dart';
 import 'services/storage.dart';
+import 'services/sync.dart';
 import 'services/user_data.dart';
 import 'theme/palette.dart';
 import 'widgets/clay.dart';
@@ -41,6 +42,7 @@ Future<void> main() async {
   await eq.init(player.player);
   await player.setVolume(prefs.volume);
   player.onSongStarted = user.recordPlay;
+  final sync = SyncService(storage, library, playlists, user, player);
 
   runApp(AppScope(
     library: library,
@@ -49,11 +51,12 @@ Future<void> main() async {
     eq: eq,
     prefs: prefs,
     user: user,
+    sync: sync,
     child: const StarloomApp(),
   ));
 
   // Loads the cached library instantly, then rescans in the background.
-  unawaited(library.init());
+  unawaited(library.init().then((_) => sync.init()));
 }
 
 class StarloomApp extends StatefulWidget {
@@ -117,7 +120,11 @@ class _StarloomAppState extends State<StarloomApp> with WidgetsBindingObserver {
         builder: (context, child) {
           // Respect the system "Reduce Motion" setting too.
           StopMotion.instance.enabled = !prefs.reduceMotion && !MediaQuery.disableAnimationsOf(context);
-          return TapFx(child: child!);
+          // Dark status bar icons on the light themes.
+          return AnnotatedRegion<SystemUiOverlayStyle>(
+            value: Clay.current.dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+            child: TapFx(child: child!),
+          );
         },
         home: const HomeShell(),
       ),

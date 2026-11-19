@@ -28,6 +28,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/plates/
     - assets/fonts/OFL-MysteryQuest.txt
     - assets/fonts/OFL-IMFellEnglish.txt
   fonts:

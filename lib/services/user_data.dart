@@ -21,7 +21,7 @@ class UserData extends ChangeNotifier {
   final List<String> recent = [];
 
   /// Recently opened albums/playlists/artists for the home screen:
-  /// "playlist:<id>", "album:<key>", "artist:<name>", "liked".
+  /// `playlist:ID`, `album:KEY`, `artist:NAME` or `liked`.
   final List<String> recentCollections = [];
 
   /// Last change, for syncing between devices.
@@ -55,6 +55,18 @@ class UserData extends ChangeNotifier {
       liked.insert(0, id);
     }
     likesModifiedMs = DateTime.now().millisecondsSinceEpoch;
+    _changed();
+  }
+
+  /// Replace the liked list (after a sync merge).
+  void replaceLikes(List<String> ids, int modifiedMs) {
+    liked
+      ..clear()
+      ..addAll(ids);
+    _likedSet
+      ..clear()
+      ..addAll(ids);
+    likesModifiedMs = modifiedMs;
     _changed();
   }
 

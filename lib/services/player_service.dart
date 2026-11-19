@@ -21,6 +21,9 @@ class PlayerService extends ChangeNotifier {
   final Player player = Player();
   final List<StreamSubscription<Object?>> _subs = [];
 
+  /// Songs streamed from the PC (not in the local library), by id.
+  final Map<String, Song> remote = {};
+
   List<Song> queue = const [];
   int index = -1;
   bool playing = false;
@@ -109,7 +112,7 @@ class PlayerService extends ChangeNotifier {
     var newIndex = -1;
     for (var i = 0; i < pl.items.length; i++) {
       final id = pl.items[i].extras?['id'];
-      final song = id is String ? _library.byId(id) : null;
+      final song = id is String ? (_library.byId(id) ?? remote[id]) : null;
       if (song == null) continue;
       if (i == pl.index) newIndex = songs.length;
       songs.add(song);
@@ -131,7 +134,7 @@ class PlayerService extends ChangeNotifier {
   }
 
   Media _media(Song s) => Media(
-        Uri.file(s.path, windows: Platform.isWindows).toString(),
+        s.path.startsWith('http') ? s.path : Uri.file(s.path, windows: Platform.isWindows).toString(),
         extras: {'id': s.id, 'title': s.title, 'artist': s.artist, 'album': s.album},
       );
 

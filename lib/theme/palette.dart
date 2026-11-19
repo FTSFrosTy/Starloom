@@ -87,8 +87,108 @@ const StarTheme kMoonlit = StarTheme(
   ],
 );
 
+const StarTheme kGothic = StarTheme(
+  id: 'gothic',
+  name: 'Gothic Town',
+  blurb: 'Crooked spires, glowing windows, a giant moon.',
+  dark: true,
+  backdrop: BackdropKind.plate,
+  plate: 'assets/plates/gothic.jpg',
+  bg: Color(0xFF0B0D16),
+  bg2: Color(0xFF151A2A),
+  surface: Color(0xFF2B2A40),
+  surfaceHi: Color(0xFF3C3456),
+  panel: Color(0xFF1D1F30),
+  text: Color(0xFFEDE6D6),
+  subtext: Color(0xFF9DA3B8),
+  accent: Color(0xFFF2B85A),
+  accent2: Color(0xFFD9682B),
+  cool: Color(0xFF7FA6C9),
+  good: Color(0xFF4F7A6A),
+  danger: Color(0xFFB54663),
+  pebbles: [
+    Color(0xFF3E5E66), Color(0xFF5E4870), Color(0xFF7A5634), Color(0xFF465072),
+    Color(0xFF6B3E4E), Color(0xFF4A6656), Color(0xFF6E6248), Color(0xFF39486A),
+  ],
+);
+
+const StarTheme kWestern = StarTheme(
+  id: 'western',
+  name: 'Ghost Town',
+  blurb: 'Dusty main street, saloon fronts, a low desert sun.',
+  dark: true,
+  backdrop: BackdropKind.plate,
+  plate: 'assets/plates/western.jpg',
+  bg: Color(0xFF1E120C),
+  bg2: Color(0xFF2C1A10),
+  surface: Color(0xFF5A3420),
+  surfaceHi: Color(0xFF74452A),
+  panel: Color(0xFF3A2216),
+  text: Color(0xFFF6E7D2),
+  subtext: Color(0xFFC9A88A),
+  accent: Color(0xFFFFB347),
+  accent2: Color(0xFFE2552E),
+  cool: Color(0xFF8FB3C7),
+  good: Color(0xFF6E8B3D),
+  danger: Color(0xFFC2453A),
+  pebbles: [
+    Color(0xFF8A4A26), Color(0xFF6B5A3A), Color(0xFF9A3A24), Color(0xFF5E6A3A),
+    Color(0xFF7A6040), Color(0xFF4E5E6E), Color(0xFFA0602E), Color(0xFF6A3A2A),
+  ],
+);
+
+const StarTheme kSnow = StarTheme(
+  id: 'snow',
+  name: 'Snow Village',
+  blurb: 'Snow-capped cottages and pines on a bright winter day.',
+  dark: false,
+  backdrop: BackdropKind.plate,
+  plate: 'assets/plates/snow.jpg',
+  bg: Color(0xFFE6ECF5),
+  bg2: Color(0xFFF5F8FC),
+  surface: Color(0xFFCAD7E9),
+  surfaceHi: Color(0xFFB2C5DF),
+  panel: Color(0xFFDCE5F1),
+  text: Color(0xFF1F2A3D),
+  subtext: Color(0xFF55637C),
+  accent: Color(0xFF2E6CB2),
+  accent2: Color(0xFFC8442F),
+  cool: Color(0xFF4F86C6),
+  good: Color(0xFF3F7A5A),
+  danger: Color(0xFFC23B3B),
+  pebbles: [
+    Color(0xFFB34A3A), Color(0xFF4F7CA8), Color(0xFFC79A4E), Color(0xFF6E8A58),
+    Color(0xFF8A6AA8), Color(0xFF3F8A8A), Color(0xFFA86A4A), Color(0xFF5A6E9A),
+  ],
+);
+
+const StarTheme kHarvest = StarTheme(
+  id: 'harvest',
+  name: 'Harvest',
+  blurb: 'Pumpkin patch, red barn, golden afternoon.',
+  dark: false,
+  backdrop: BackdropKind.plate,
+  plate: 'assets/plates/harvest.jpg',
+  bg: Color(0xFFF4E7D2),
+  bg2: Color(0xFFFBF3E6),
+  surface: Color(0xFFE8C9A0),
+  surfaceHi: Color(0xFFDCB07C),
+  panel: Color(0xFFF0DDC2),
+  text: Color(0xFF3A2414),
+  subtext: Color(0xFF7A5A40),
+  accent: Color(0xFFC85A14),
+  accent2: Color(0xFFE07A1F),
+  cool: Color(0xFF4C79A8),
+  good: Color(0xFF5E7D2E),
+  danger: Color(0xFFB23A2A),
+  pebbles: [
+    Color(0xFFD9772A), Color(0xFFB0452E), Color(0xFFD1A23C), Color(0xFF7E8F3A),
+    Color(0xFF9A5A2E), Color(0xFF5A7A9A), Color(0xFFC0602A), Color(0xFF8A6A3A),
+  ],
+);
+
 /// All themes. The first one is the default.
-const List<StarTheme> kThemes = [kMoonlit];
+const List<StarTheme> kThemes = [kMoonlit, kGothic, kWestern, kSnow, kHarvest];
 
 /// The current theme's colors. Static getters so any widget can use them;
 /// the app rebuilds from the root when the theme changes.

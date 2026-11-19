@@ -12,21 +12,153 @@ import 'clay.dart';
 /// The moonlit model set behind every screen: crooked moon, twinkling
 /// stars, lumpy hills, a bare tree and a few moths, all stepping at 12 fps.
 class Backdrop extends StatelessWidget {
-  const Backdrop({super.key, required this.child, this.animate = true});
+  const Backdrop({super.key, required this.child, this.animate = true, this.scrim = true});
 
   final Widget child;
   final bool animate;
 
+  /// Shade the scenery so text on top stays readable.
+  final bool scrim;
+
   @override
   Widget build(BuildContext context) {
+    final t = Clay.current;
+    final moving = animate && StopMotion.instance.enabled;
     return Stack(
       fit: StackFit.expand,
       children: [
-        RepaintBoundary(child: CustomPaint(painter: _SetPainter(animate: animate && StopMotion.instance.enabled))),
+        if (t.backdrop == BackdropKind.plate && t.plate != null)
+          _Plate(theme: t, animate: moving, scrim: scrim)
+        else
+          RepaintBoundary(child: CustomPaint(painter: _SetPainter(animate: moving))),
         child,
       ],
     );
   }
+}
+
+/// A pre-rendered 3D clay set (made in Blender) with live stop-motion
+/// touches on top: falling snow, leaves, dust or drifting fog, and the
+/// faint light flicker you get between frames of a real stop-motion film.
+class _Plate extends StatelessWidget {
+  const _Plate({required this.theme, required this.animate, required this.scrim});
+
+  final StarTheme theme;
+  final bool animate;
+  final bool scrim;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final longest = (size.longestSide * dpr).clamp(600, 1440).round();
+    final shade = theme.bg;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        RepaintBoundary(
+          child: Image(
+            image: ResizeImage(AssetImage(theme.plate!), width: longest, height: longest, policy: ResizeImagePolicy.fit),
+            fit: BoxFit.cover,
+            filterQuality: FilterQuality.medium,
+            gaplessPlayback: true,
+          ),
+        ),
+        RepaintBoundary(child: CustomPaint(painter: _PlateFx(theme.id, animate: animate))),
+        if (scrim)
+          IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: theme.dark
+                      ? [shade.withValues(alpha: 0.25), shade.withValues(alpha: 0.45), shade.withValues(alpha: 0.72)]
+                      : [shade.withValues(alpha: 0.30), shade.withValues(alpha: 0.55), shade.withValues(alpha: 0.78)],
+                  stops: const [0.0, 0.45, 1.0],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _PlateFx extends CustomPainter {
+  _PlateFx(this.themeId, {required this.animate}) : super(repaint: animate ? StopMotion.instance : null);
+
+  final String themeId;
+  final bool animate;
+
+  double _u(int a, int b) => clayNoise(a, b, 31) * 0.5 + 0.5;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final f = animate ? StopMotion.instance.frame : 0;
+    final w = size.width, h = size.height;
+    switch (themeId) {
+      case 'snow':
+        final p = Paint()..color = Colors.white.withValues(alpha: 0.85);
+        for (var i = 0; i < 70; i++) {
+          final speed = 3 + _u(i, 1) * 5;
+          final y = (_u(i, 2) * (h + 40) + f * speed) % (h + 40) - 20;
+          final x = (_u(i, 3) * w + math.sin((f + i * 7) * 0.12) * 14) % w;
+          canvas.drawCircle(Offset(x, y), 1.2 + _u(i, 4) * 2.6, p);
+        }
+      case 'harvest':
+        final colors = [const Color(0xFFE07A1F), const Color(0xFFB0452E), const Color(0xFFD9A43A)];
+        for (var i = 0; i < 16; i++) {
+          final speed = 2 + _u(i, 1) * 3;
+          final y = (_u(i, 2) * (h + 60) + f * speed) % (h + 60) - 30;
+          final x = (_u(i, 3) * w + math.sin((f + i * 9) * 0.08) * 40 + f * 0.6) % w;
+          canvas.save();
+          canvas.translate(x, y);
+          canvas.rotate((f * 0.25 + i) % (math.pi * 2));
+          final leaf = Path()
+            ..moveTo(0, -7)
+            ..quadraticBezierTo(5, 0, 0, 7)
+            ..quadraticBezierTo(-5, 0, 0, -7);
+          canvas.drawPath(leaf, Paint()..color = colors[i % 3].withValues(alpha: 0.85));
+          canvas.restore();
+        }
+      case 'western':
+        final p = Paint()..color = const Color(0xFFFFD9A0).withValues(alpha: 0.35);
+        for (var i = 0; i < 40; i++) {
+          final x = (_u(i, 1) * w + f * (1.5 + _u(i, 2) * 2.5)) % w;
+          final y = h * 0.35 + _u(i, 3) * h * 0.6 + math.sin((f + i * 5) * 0.1) * 6;
+          canvas.drawCircle(Offset(x, y), 0.8 + _u(i, 4) * 1.6, p);
+        }
+      case 'gothic':
+        for (var i = 0; i < 6; i++) {
+          final x = (_u(i, 1) * w * 1.6 + f * (0.6 + _u(i, 2) * 0.8)) % (w * 1.6) - w * 0.3;
+          final y = h * (0.45 + _u(i, 3) * 0.45);
+          final r = w * (0.25 + _u(i, 4) * 0.25);
+          canvas.drawOval(
+            Rect.fromCenter(center: Offset(x, y), width: r * 2, height: r * 0.5),
+            Paint()
+              ..color = const Color(0xFF9AB0D6).withValues(alpha: 0.07)
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 30),
+          );
+        }
+        final mote = Paint()..color = const Color(0xFFFFC27A).withValues(alpha: 0.5);
+        for (var i = 0; i < 18; i++) {
+          final x = (_u(i, 5) * w + math.sin((f + i * 11) * 0.07) * 20) % w;
+          final y = (_u(i, 6) * h - f * (0.8 + _u(i, 7))) % h;
+          canvas.drawCircle(Offset(x, y < 0 ? y + h : y), 1.1, mote);
+        }
+    }
+    // Frame-to-frame light flicker, like real stop-motion lamps.
+    final flick = clayNoise(f, 3, 9) * 0.012;
+    if (flick > 0) {
+      canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white.withValues(alpha: flick));
+    } else {
+      canvas.drawRect(Offset.zero & size, Paint()..color = Colors.black.withValues(alpha: -flick));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_PlateFx old) => old.themeId != themeId || old.animate != animate;
 }
 
 class _SetPainter extends CustomPainter {
@@ -139,7 +271,7 @@ class _SetPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_SetPainter old) => old.animate != animate;
+  bool shouldRepaint(_SetPainter old) => true; // cheap; also picks up theme switches
 }
 
 /// A row of clay candles whose flames jump with the music.

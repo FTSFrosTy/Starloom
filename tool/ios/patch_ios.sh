@@ -19,6 +19,13 @@ pb "Add :UIFileSharingEnabled bool true"
 pb "Delete :LSSupportsOpeningDocumentsInPlace"
 pb "Add :LSSupportsOpeningDocumentsInPlace bool true"
 
+# Sync with Starloom on your PC over home Wi-Fi.
+pb "Delete :NSLocalNetworkUsageDescription"
+pb "Add :NSLocalNetworkUsageDescription string Starloom connects to Starloom on your PC to sync playlists and songs."
+pb "Delete :NSAppTransportSecurity"
+pb "Add :NSAppTransportSecurity dict"
+pb "Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true"
+
 pb "Delete :CFBundleDisplayName"
 pb "Add :CFBundleDisplayName string Starloom"
 pb "Delete :ITSAppUsesNonExemptEncryption"

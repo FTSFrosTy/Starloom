@@ -7,6 +7,7 @@ import 'library.dart';
 import 'player_service.dart';
 import 'playlists.dart';
 import 'storage.dart';
+import 'sync.dart';
 import 'user_data.dart';
 
 /// Small app-wide preferences.
@@ -92,6 +93,7 @@ class AppScope extends InheritedWidget {
     required this.eq,
     required this.prefs,
     required this.user,
+    required this.sync,
     required super.child,
   });
 
@@ -101,6 +103,7 @@ class AppScope extends InheritedWidget {
   final EqController eq;
   final AppPrefs prefs;
   final UserData user;
+  final SyncService sync;
 
   static AppScope of(BuildContext context) => context.getInheritedWidgetOfExactType<AppScope>()!;
 

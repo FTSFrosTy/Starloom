@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:typed_data';
 import 'dart:math';
 
 import 'package:audio_metadata_reader/audio_metadata_reader.dart' show readMetadata;

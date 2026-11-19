@@ -6,7 +6,9 @@ import '../models/models.dart';
 import '../services/app_scope.dart';
 import '../theme/palette.dart';
 import '../widgets/clay.dart';
+import '../widgets/nav.dart';
 import 'home_shell.dart';
+import 'sync_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -92,6 +94,24 @@ class SettingsScreen extends StatelessWidget {
               ],
             ),
             _Section(
+              title: Platform.isIOS ? 'Sync with your PC' : 'Sync with your phone',
+              seed: 1005,
+              children: [
+                Text(
+                  'Playlists and likes sync both ways over Wi-Fi. Copy songs either direction, or stream your PC library on the phone.',
+                  style: Clay.book(14.5),
+                ),
+                const SizedBox(height: 10),
+                ClayButton(
+                  label: 'Open sync',
+                  icon: Icons.sync_rounded,
+                  color: Clay.pumpkin,
+                  seed: 1006,
+                  onTap: () => Nav.push(const SyncScreen()),
+                ),
+              ],
+            ),
+            _Section(
               title: 'Look & feel',
               seed: 1010,
               children: [
@@ -104,25 +124,29 @@ class SettingsScreen extends StatelessWidget {
                     for (final t in kThemes)
                       Squish(
                         onTap: () => scope.prefs.setTheme(t.id),
-                        child: ClayBox(
-                          color: t.surface,
-                          seed: t.id.hashCode,
-                          squareness: 4,
-                          depth: 4,
-                          padding: const EdgeInsets.fromLTRB(12, 10, 14, 10),
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        child: SizedBox(
+                          width: 132,
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Container(
-                              width: 22,
-                              height: 22,
+                              width: 132,
+                              height: 132,
                               decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: LinearGradient(colors: [t.bg, t.accent2, t.accent]),
-                                border: Border.all(color: scope.prefs.themeId == t.id ? t.accent : Colors.transparent, width: 2),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(color: scope.prefs.themeId == t.id ? Clay.candle : Colors.transparent, width: 3),
+                                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 8, offset: const Offset(0, 4))],
+                                gradient: t.plate == null ? LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [t.bg, t.surfaceHi]) : null,
                               ),
+                              clipBehavior: Clip.antiAlias,
+                              child: t.plate != null
+                                  ? Image.asset(t.plate!, fit: BoxFit.cover, cacheWidth: 300)
+                                  : Center(child: Icon(Icons.nightlight_round, color: t.accent, size: 44)),
                             ),
-                            const SizedBox(width: 10),
-                            Text(t.name, style: TextStyle(color: t.text, fontWeight: FontWeight.w700)),
-                            if (scope.prefs.themeId == t.id) ...[const SizedBox(width: 6), Icon(Icons.check_rounded, size: 18, color: t.accent)],
+                            const SizedBox(height: 6),
+                            Row(children: [
+                              Expanded(child: Text(t.name, style: TextStyle(color: Clay.bone, fontWeight: FontWeight.w700))),
+                              if (scope.prefs.themeId == t.id) Icon(Icons.check_circle_rounded, size: 18, color: Clay.candle),
+                            ]),
+                            Text(t.blurb, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: Clay.ash, fontSize: 11.5)),
                           ]),
                         ),
                       ),
@@ -130,7 +154,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 Padding(
                   padding: const EdgeInsets.only(top: 8, bottom: 6),
-                  child: Text('More 3D clay worlds are on the way: Gothic Town, Ghost Town, Snow Village, Harvest.', style: Clay.book(14)),
+                  child: Text('Moonlit is the original. The others are real 3D clay sets, built and lit in Blender.', style: Clay.book(14)),
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
