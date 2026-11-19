@@ -12,8 +12,11 @@ import 'services/library.dart';
 import 'services/player_service.dart';
 import 'services/playlists.dart';
 import 'services/storage.dart';
+import 'services/user_data.dart';
 import 'theme/palette.dart';
 import 'widgets/clay.dart';
+import 'widgets/nav.dart';
+import 'widgets/tap_fx.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,10 +33,14 @@ Future<void> main() async {
   final playlists = PlaylistStore(storage);
   final player = PlayerService(library);
   final eq = EqController(storage);
+  final user = UserData(storage);
 
   await prefs.init();
-  await Future.wait([playlists.init(), player.init()]);
+  Squish.haptics = prefs.haptics;
+  await Future.wait([playlists.init(), player.init(), user.init()]);
   await eq.init(player.player);
+  await player.setVolume(prefs.volume);
+  player.onSongStarted = user.recordPlay;
 
   runApp(AppScope(
     library: library,
@@ -41,6 +48,7 @@ Future<void> main() async {
     player: player,
     eq: eq,
     prefs: prefs,
+    user: user,
     child: const StarloomApp(),
   ));
 
@@ -56,16 +64,37 @@ class StarloomApp extends StatefulWidget {
 }
 
 class _StarloomAppState extends State<StarloomApp> with WidgetsBindingObserver {
+  late final AppPrefs _prefs;
+  late String _themeId;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _prefs = AppScope.of(context).prefs;
+    _themeId = _prefs.themeId;
+    _prefs.addListener(_onPrefs);
   }
 
   @override
   void dispose() {
+    _prefs.removeListener(_onPrefs);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// Theme colors are read straight from [Clay], so after a theme switch
+  /// every widget is told to rebuild once (keeps all page/scroll state).
+  void _onPrefs() {
+    if (_prefs.themeId == _themeId) return;
+    _themeId = _prefs.themeId;
+    setState(() {});
+    void rebuild(Element e) {
+      e.markNeedsBuild();
+      e.visitChildren(rebuild);
+    }
+
+    (context as Element).visitChildren(rebuild);
   }
 
   @override
@@ -77,17 +106,21 @@ class _StarloomAppState extends State<StarloomApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Starloom',
-      debugShowCheckedModeBanner: false,
-      theme: Clay.theme(),
-      builder: (context, child) {
-        // Respect the system "Reduce Motion" setting too.
-        final prefs = AppScope.of(context).prefs;
-        StopMotion.instance.enabled = !prefs.reduceMotion && !MediaQuery.disableAnimationsOf(context);
-        return child!;
-      },
-      home: const HomeShell(),
+    final prefs = _prefs;
+    return ListenableBuilder(
+      listenable: prefs,
+      builder: (context, _) => MaterialApp(
+        title: 'Starloom',
+        debugShowCheckedModeBanner: false,
+        navigatorKey: Nav.root,
+        theme: Clay.theme(),
+        builder: (context, child) {
+          // Respect the system "Reduce Motion" setting too.
+          StopMotion.instance.enabled = !prefs.reduceMotion && !MediaQuery.disableAnimationsOf(context);
+          return TapFx(child: child!);
+        },
+        home: const HomeShell(),
+      ),
     );
   }
 }

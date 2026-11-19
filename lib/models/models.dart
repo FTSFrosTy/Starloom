@@ -1,6 +1,9 @@
 /// Plain data types. Everything here round-trips through JSON.
 library;
 
+/// Bump when the scan reads new fields, so old cache entries get re-read.
+const int kSongSchema = 2;
+
 class Song {
   Song({
     required this.id,
@@ -12,6 +15,8 @@ class Song {
     required this.size,
     required this.modifiedMs,
     required this.hasTags,
+    this.trackNo = 0,
+    this.artKey,
   }) : searchKey = '$title $artist $album'.toLowerCase();
 
   /// Stable id: `sourceId::path/relative/to/the/source/folder`.
@@ -28,6 +33,16 @@ class Song {
   /// False when the file had no title tag (title is the file name).
   final bool hasTags;
   final String searchKey;
+
+  /// Track number inside its album (0 if unknown).
+  final int trackNo;
+
+  /// Name of the cached cover thumbnail (in the art folder), if the file
+  /// had embedded artwork.
+  final String? artKey;
+
+  /// Groups songs into albums: same album name + artist.
+  String get albumKey => album.isEmpty ? '' : '${album.toLowerCase()}|${artist.toLowerCase()}';
 
   String get subtitle {
     if (artist.isEmpty && album.isEmpty) return 'Unknown artist';
@@ -46,6 +61,9 @@ class Song {
         'size': size,
         'modifiedMs': modifiedMs,
         'hasTags': hasTags,
+        'trackNo': trackNo,
+        'artKey': artKey,
+        'v': kSongSchema,
       };
 
   static Song fromJson(Map<String, Object?> j) => Song(
@@ -58,6 +76,8 @@ class Song {
         size: (j['size'] as num?)?.toInt() ?? 0,
         modifiedMs: (j['modifiedMs'] as num?)?.toInt() ?? 0,
         hasTags: (j['hasTags'] as bool?) ?? false,
+        trackNo: (j['trackNo'] as num?)?.toInt() ?? 0,
+        artKey: j['artKey'] as String?,
       );
 }
 
@@ -141,8 +161,10 @@ class Playlist {
     required this.songIds,
     List<MissingEntry>? missing,
     int? createdMs,
+    int? modifiedMs,
   })  : missing = missing ?? [],
-        createdMs = createdMs ?? DateTime.now().millisecondsSinceEpoch;
+        createdMs = createdMs ?? DateTime.now().millisecondsSinceEpoch,
+        modifiedMs = modifiedMs ?? DateTime.now().millisecondsSinceEpoch;
 
   final String id;
   String name;
@@ -150,12 +172,18 @@ class Playlist {
   final List<MissingEntry> missing;
   final int createdMs;
 
+  /// Last change, for syncing between devices.
+  int modifiedMs;
+
+  void touch() => modifiedMs = DateTime.now().millisecondsSinceEpoch;
+
   Map<String, Object?> toJson() => {
         'id': id,
         'name': name,
         'songIds': songIds,
         'missing': missing.map((m) => m.toJson()).toList(),
         'createdMs': createdMs,
+        'modifiedMs': modifiedMs,
       };
 
   static Playlist fromJson(Map<String, Object?> j) => Playlist(
@@ -166,6 +194,7 @@ class Playlist {
             .map((e) => MissingEntry.fromJson((e as Map).cast<String, Object?>()))
             .toList(),
         createdMs: (j['createdMs'] as num?)?.toInt(),
+        modifiedMs: (j['modifiedMs'] as num?)?.toInt(),
       );
 }
 
@@ -177,4 +206,27 @@ String formatDuration(Duration d) {
   final ss = s.toString().padLeft(2, '0');
   if (h > 0) return '$h:${m.toString().padLeft(2, '0')}:$ss';
   return '$m:$ss';
+}
+
+/// An album, built from the songs that share an album name and artist.
+class Album {
+  Album(this.key, this.name, this.artist, this.songs);
+
+  final String key;
+  final String name;
+  final String artist;
+  final List<Song> songs;
+
+  String? get artKey => songs.map((s) => s.artKey).whereType<String>().firstOrNull;
+}
+
+/// An artist with their songs and albums.
+class Artist {
+  Artist(this.name, this.songs, this.albums);
+
+  final String name;
+  final List<Song> songs;
+  final List<Album> albums;
+
+  String? get artKey => albums.map((a) => a.artKey).whereType<String>().firstOrNull ?? songs.map((s) => s.artKey).whereType<String>().firstOrNull;
 }

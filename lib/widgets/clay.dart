@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/palette.dart';
 
@@ -227,7 +228,7 @@ class ClayBox extends StatelessWidget {
   const ClayBox({
     super.key,
     required this.child,
-    this.color = Clay.bruise,
+    this.color,
     this.seed = 1,
     this.wobble = 1.0,
     this.squareness = 4.0,
@@ -238,7 +239,7 @@ class ClayBox extends StatelessWidget {
   });
 
   final Widget child;
-  final Color color;
+  final Color? color;
   final int seed;
   final double wobble;
   final double squareness;
@@ -252,7 +253,7 @@ class ClayBox extends StatelessWidget {
     return RepaintBoundary(
       child: CustomPaint(
         painter: ClayPainter(
-          color: color,
+          color: color ?? Clay.bruise,
           seed: seed,
           wobble: wobble,
           squareness: squareness,
@@ -269,6 +270,9 @@ class ClayBox extends StatelessWidget {
 /// Squishes like soft clay when pressed.
 class Squish extends StatefulWidget {
   const Squish({super.key, required this.child, this.onTap, this.onLongPress, this.enabled = true});
+
+  /// A light tick on every press (set from the user's settings).
+  static bool haptics = true;
 
   final Widget child;
   final VoidCallback? onTap;
@@ -290,6 +294,7 @@ class _SquishState extends State<Squish> with SingleTickerProviderStateMixin {
   }
 
   void _down() {
+    if (Squish.haptics) HapticFeedback.selectionClick();
     _c.animateTo(1, duration: const Duration(milliseconds: 90), curve: Curves.easeOut);
   }
 
@@ -330,8 +335,8 @@ class ClayIconButton extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.size = 48,
-    this.color = Clay.bruise,
-    this.iconColor = Clay.bone,
+    this.color,
+    this.iconColor,
     this.seed = 3,
     this.boil = false,
     this.tooltip,
@@ -340,8 +345,8 @@ class ClayIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onTap;
   final double size;
-  final Color color;
-  final Color iconColor;
+  final Color? color;
+  final Color? iconColor;
   final int seed;
   final bool boil;
   final String? tooltip;
@@ -362,7 +367,7 @@ class ClayIconButton extends StatelessWidget {
           depth: size * 0.12,
           boil: boil,
           padding: EdgeInsets.zero,
-          child: Center(child: Icon(icon, color: iconColor, size: size * 0.46)),
+          child: Center(child: Icon(icon, color: iconColor ?? (color == null ? Clay.bone : _onColor(color!)), size: size * 0.46)),
         ),
       ),
     );
@@ -373,12 +378,12 @@ class ClayIconButton extends StatelessWidget {
 
 /// Clay pill button with a label.
 class ClayButton extends StatelessWidget {
-  const ClayButton({super.key, required this.label, required this.onTap, this.icon, this.color = Clay.plum, this.seed = 5});
+  const ClayButton({super.key, required this.label, required this.onTap, this.icon, this.color, this.seed = 5});
 
   final String label;
   final IconData? icon;
   final VoidCallback? onTap;
-  final Color color;
+  final Color? color;
   final int seed;
 
   @override
@@ -387,7 +392,7 @@ class ClayButton extends StatelessWidget {
       onTap: onTap,
       enabled: onTap != null,
       child: ClayBox(
-        color: color,
+        color: color ?? Clay.plum,
         seed: seed,
         squareness: 3.0,
         depth: 5,
@@ -395,8 +400,8 @@ class ClayButton extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (icon != null) ...[Icon(icon, size: 18, color: Clay.bone), const SizedBox(width: 8)],
-            Text(label, style: const TextStyle(color: Clay.bone, fontWeight: FontWeight.w600)),
+            if (icon != null) ...[Icon(icon, size: 18, color: _onColor(color ?? Clay.plum)), const SizedBox(width: 8)],
+            Text(label, style: TextStyle(color: _onColor(color ?? Clay.plum), fontWeight: FontWeight.w600)),
           ],
         ),
       ),
@@ -442,7 +447,7 @@ class ClaySlider extends StatefulWidget {
     required this.onChanged,
     this.onChangeEnd,
     this.vertical = false,
-    this.color = Clay.candle,
+    this.color,
     this.thickness = 36,
     this.centerZero = false,
     this.seed = 9,
@@ -452,7 +457,7 @@ class ClaySlider extends StatefulWidget {
   final ValueChanged<double> onChanged;
   final ValueChanged<double>? onChangeEnd;
   final bool vertical;
-  final Color color;
+  final Color? color;
   final double thickness;
 
   /// Fill from the middle (for +/- dB sliders) instead of from the start.
@@ -531,7 +536,7 @@ class _ClaySliderState extends State<ClaySlider> {
               painter: _ClaySliderPainter(
                 value: widget.value.clamp(0.0, 1.0),
                 vertical: widget.vertical,
-                color: widget.color,
+                color: widget.color ?? Clay.candle,
                 knob: widget.thickness * 0.8,
                 centerZero: widget.centerZero,
                 active: _dragging,
@@ -630,3 +635,6 @@ class ClayTitle extends StatelessWidget {
     );
   }
 }
+
+/// Light or dark text, whichever reads on [c].
+Color _onColor(Color c) => c.computeLuminance() > 0.45 ? const Color(0xFF1A1410) : const Color(0xFFFFF6E8);

@@ -23,11 +23,6 @@ class EqScreen extends StatelessWidget {
           children: [
             Row(
               children: [
-                if (showBack)
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded, color: Clay.bone),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
                 Expanded(
                   child: ScreenHeader(
                     title: 'Equalizer',
@@ -61,7 +56,7 @@ class EqScreen extends StatelessWidget {
                       squareness: 3,
                       depth: 3,
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      child: Text(p.name, style: TextStyle(color: selected ? Clay.night : Clay.bone, fontWeight: FontWeight.w700)),
+                      child: Text(p.name, style: TextStyle(color: selected ? Clay.onAccent : Clay.bone, fontWeight: FontWeight.w700)),
                     ),
                   );
                 },
@@ -77,7 +72,7 @@ class EqScreen extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: ClayBox(
-                        color: const Color(0xFF241B35),
+                        color: Clay.panel,
                         seed: 901,
                         squareness: 5,
                         padding: const EdgeInsets.fromLTRB(6, 14, 6, 10),
@@ -89,7 +84,7 @@ class EqScreen extends StatelessWidget {
                                 Expanded(
                                   child: Column(
                                     children: [
-                                      Text(_db(s.bands[i]), style: const TextStyle(fontSize: 10.5, color: Clay.bone)),
+                                      Text(_db(s.bands[i]), style: TextStyle(fontSize: 10.5, color: Clay.bone)),
                                       const SizedBox(height: 4),
                                       Expanded(
                                         child: ClaySlider(
@@ -103,7 +98,7 @@ class EqScreen extends StatelessWidget {
                                         ),
                                       ),
                                       const SizedBox(height: 4),
-                                      Text(kEqLabels[i], style: const TextStyle(fontSize: 10.5, color: Clay.ash)),
+                                      Text(kEqLabels[i], style: TextStyle(fontSize: 10.5, color: Clay.ash)),
                                     ],
                                   ),
                                 ),
@@ -206,7 +201,7 @@ class _KnobRow extends StatelessWidget {
           ),
           SizedBox(
             width: 56,
-            child: Text('${EqScreen._db(value)} dB', textAlign: TextAlign.right, style: const TextStyle(color: Clay.bone, fontSize: 13)),
+            child: Text('${EqScreen._db(value)} dB', textAlign: TextAlign.right, style: TextStyle(color: Clay.bone, fontSize: 13)),
           ),
         ],
       ),

@@ -43,7 +43,7 @@ class _SetPainter extends CustomPainter {
     canvas.drawRect(
       rect,
       Paint()
-        ..shader = ui.Gradient.linear(Offset(0, 0), Offset(0, h), const [Clay.night, Clay.dusk, Color(0xFF231A36)], const [0, 0.6, 1]),
+        ..shader = ui.Gradient.linear(Offset(0, 0), Offset(0, h), [Clay.night, Clay.dusk, const Color(0xFF231A36)], const [0, 0.6, 1]),
     );
 
     // Stars, each twinkling on its own beat.
@@ -323,13 +323,13 @@ class _ClayRecordState extends State<ClayRecord> {
                   child: widget.cover != null
                       ? Image(image: widget.cover!, fit: BoxFit.cover, gaplessPlayback: true)
                       : DecoratedBox(
-                          decoration: const BoxDecoration(color: Clay.pumpkin),
+                          decoration: BoxDecoration(color: Clay.pumpkin),
                           child: Center(child: Icon(Icons.nightlight_round, color: Clay.night.withValues(alpha: 0.7), size: label * 0.4)),
                         ),
                 ),
               ),
               // Spindle hole.
-              Container(width: d * 0.035, height: d * 0.035, decoration: const BoxDecoration(color: Clay.night, shape: BoxShape.circle)),
+              Container(width: d * 0.035, height: d * 0.035, decoration: BoxDecoration(color: Clay.night, shape: BoxShape.circle)),
             ],
           ),
         ),

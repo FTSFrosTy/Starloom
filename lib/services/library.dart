@@ -1,10 +1,12 @@
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:typed_data';
 import 'dart:math';
 
-import 'package:audio_metadata_reader/audio_metadata_reader.dart';
+import 'package:audio_metadata_reader/audio_metadata_reader.dart' show readMetadata;
 import 'package:file_selector/file_selector.dart' as fs;
 import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:starloom_folders/starloom_folders.dart';
@@ -32,8 +34,66 @@ class Library extends ChangeNotifier {
   bool scanning = false;
   String? status;
 
+  /// Folder holding the small cover thumbnails made during scans.
+  late final String artDir;
+
   List<Song> get songs => _songs;
   Song? byId(String id) => _byId[id];
+
+  /// Bumps on every library change, so screens can cache derived lists.
+  int version = 0;
+
+  String? artPath(String? key) => key == null ? null : p.join(artDir, '$key.jpg');
+
+  List<Album>? _albums;
+  List<Artist>? _artists;
+
+  List<Album> get albums => _albums ??= _buildAlbums();
+  List<Artist> get artists => _artists ??= _buildArtists();
+
+  List<Album> _buildAlbums() {
+    final map = <String, List<Song>>{};
+    for (final s in _songs) {
+      if (s.albumKey.isEmpty) continue;
+      map.putIfAbsent(s.albumKey, () => []).add(s);
+    }
+    final list = [
+      for (final e in map.entries)
+        Album(e.key, e.value.first.album, e.value.first.artist, e.value..sort(_byTrack)),
+    ];
+    list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return list;
+  }
+
+  static int _byTrack(Song a, Song b) {
+    final c = a.trackNo.compareTo(b.trackNo);
+    return c != 0 ? c : a.title.toLowerCase().compareTo(b.title.toLowerCase());
+  }
+
+  List<Artist> _buildArtists() {
+    final map = <String, List<Song>>{};
+    for (final s in _songs) {
+      if (s.artist.isEmpty) continue;
+      map.putIfAbsent(s.artist.toLowerCase(), () => []).add(s);
+    }
+    final albumsByArtist = <String, List<Album>>{};
+    for (final a in albums) {
+      albumsByArtist.putIfAbsent(a.artist.toLowerCase(), () => []).add(a);
+    }
+    final list = [
+      for (final e in map.entries)
+        Artist(
+          e.value.first.artist,
+          e.value..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase())),
+          albumsByArtist[e.key] ?? const [],
+        ),
+    ];
+    list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return list;
+  }
+
+  Album? albumByKey(String key) => albums.where((a) => a.key == key).firstOrNull;
+  Artist? artistByName(String name) => artists.where((a) => a.name.toLowerCase() == name.toLowerCase()).firstOrNull;
 
   List<Song> sorted(SortMode mode) {
     return _sorted.putIfAbsent(mode, () {
@@ -54,6 +114,9 @@ class Library extends ChangeNotifier {
   }
 
   Future<void> init() async {
+    final support = await getApplicationSupportDirectory();
+    artDir = p.join(support.path, 'starloom', 'art');
+    Directory(artDir).createSync(recursive: true);
     final rawSources = await _storage.read('sources.json');
     if (rawSources is List) {
       for (final s in rawSources) {
@@ -112,6 +175,9 @@ class Library extends ChangeNotifier {
     _songs = list;
     _byId = {for (final s in list) s.id: s};
     _sorted.clear();
+    _albums = null;
+    _artists = null;
+    version++;
   }
 
   Future<void> _saveSources() => _storage.write('sources.json', sources.map((s) => s.toJson()).toList());
@@ -165,7 +231,9 @@ class Library extends ChangeNotifier {
         final cache = <String, Map<String, Object?>>{
           for (final s in _songs.where((s) => s.id.startsWith('${src.id}::'))) s.id: s.toJson(),
         };
-        final scanned = await _scanInBackground(src.path, src.id, cache);
+        status = 'Reading ${src.label}… (first scan also grabs cover art)';
+        notifyListeners();
+        final scanned = await _scanInBackground(src.path, src.id, cache, artDir);
         result.addAll(scanned.map(Song.fromJson));
       }
       _setSongs(result);
@@ -188,13 +256,14 @@ class Library extends ChangeNotifier {
 /// Tag reading is synchronous file IO, so it runs off the UI thread. This is a
 /// top-level function so the isolate closure captures only these arguments.
 Future<List<Map<String, Object?>>> _scanInBackground(
-        String root, String sourceId, Map<String, Map<String, Object?>> cache) =>
-    Isolate.run(() => scanFolder(root, sourceId, cache));
+        String root, String sourceId, Map<String, Map<String, Object?>> cache, String artDir) =>
+    Isolate.run(() => scanFolder(root, sourceId, cache, artDir));
 
 /// Runs in a background isolate. Lists [root] recursively and reads tags for
 /// new or changed files; unchanged files reuse [cache] (keyed by song id).
-List<Map<String, Object?>> scanFolder(String root, String sourceId, Map<String, Map<String, Object?>> cache) {
+List<Map<String, Object?>> scanFolder(String root, String sourceId, Map<String, Map<String, Object?>> cache, String artDir) {
   final out = <Map<String, Object?>>[];
+  final artTried = <String, bool>{}; // art key -> thumbnail exists
   final dir = Directory(root);
   if (!dir.existsSync()) return out;
 
@@ -223,7 +292,7 @@ List<Map<String, Object?>> scanFolder(String root, String sourceId, Map<String, 
     final mtime = st.modified.millisecondsSinceEpoch;
 
     final cached = cache[id];
-    if (cached != null && cached['size'] == st.size && cached['modifiedMs'] == mtime) {
+    if (cached != null && cached['size'] == st.size && cached['modifiedMs'] == mtime && cached['v'] == kSongSchema) {
       out.add({...cached, 'path': e.path});
       continue;
     }
@@ -233,9 +302,11 @@ List<Map<String, Object?>> scanFolder(String root, String sourceId, Map<String, 
     String artist = '';
     String album = '';
     int durationMs = 0;
+    int trackNo = 0;
+    String? artKey;
     bool hasTags = false;
     try {
-      final m = readMetadata(e, getImage: false);
+      final m = readMetadata(e, getImage: true);
       final t = m.title?.trim();
       if (t != null && t.isNotEmpty) {
         title = t;
@@ -244,6 +315,13 @@ List<Map<String, Object?>> scanFolder(String root, String sourceId, Map<String, 
       artist = m.artist?.trim() ?? '';
       album = m.album?.trim() ?? '';
       durationMs = m.duration?.inMilliseconds ?? 0;
+      trackNo = m.trackNumber ?? 0;
+      if (m.pictures.isNotEmpty) {
+        // One thumbnail per album (or per song when there's no album tag).
+        final key = _fnv(album.isNotEmpty ? 'a|${album.toLowerCase()}|${artist.toLowerCase()}' : 's|$id');
+        final ok = artTried[key] ??= _writeThumb(m.pictures.first.bytes, p.join(artDir, '$key.jpg'));
+        if (ok) artKey = key;
+      }
     } catch (_) {
       // Unreadable tags: keep the file name as the title.
     }
@@ -257,7 +335,37 @@ List<Map<String, Object?>> scanFolder(String root, String sourceId, Map<String, 
       'size': st.size,
       'modifiedMs': mtime,
       'hasTags': hasTags,
+      'trackNo': trackNo,
+      'artKey': artKey,
+      'v': kSongSchema,
     });
   }
   return out;
+}
+
+/// Shrinks embedded cover art to a 200 px JPEG. Returns false if it can't.
+bool _writeThumb(Uint8List bytes, String path) {
+  final f = File(path);
+  if (f.existsSync()) return true;
+  try {
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) return false;
+    final small = decoded.width > decoded.height
+        ? img.copyResize(decoded, height: 200, interpolation: img.Interpolation.average)
+        : img.copyResize(decoded, width: 200, interpolation: img.Interpolation.average);
+    f.writeAsBytesSync(img.encodeJpg(small, quality: 82));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Stable 64-bit FNV-1a hash as hex (String.hashCode isn't stable across runs).
+String _fnv(String s) {
+  var h = 0xcbf29ce484222325;
+  for (final c in s.codeUnits) {
+    h ^= c;
+    h = (h * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF;
+  }
+  return h.toUnsigned(64).toRadixString(16);
 }

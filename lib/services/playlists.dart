@@ -21,7 +21,8 @@ class PlaylistStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _save() async {
+  Future<void> _save([Playlist? changed]) async {
+    changed?.touch();
     notifyListeners();
     await _storage.write('playlists.json', playlists.map((p) => p.toJson()).toList());
   }
@@ -43,7 +44,7 @@ class PlaylistStore extends ChangeNotifier {
 
   Future<void> rename(Playlist pl, String name) async {
     pl.name = name.trim().isEmpty ? pl.name : name.trim();
-    await _save();
+    await _save(pl);
   }
 
   Future<void> delete(Playlist pl) async {
@@ -53,18 +54,23 @@ class PlaylistStore extends ChangeNotifier {
 
   Future<void> addSong(Playlist pl, String songId) async {
     pl.songIds.add(songId);
-    await _save();
+    await _save(pl);
+  }
+
+  Future<void> addSongs(Playlist pl, Iterable<String> ids) async {
+    pl.songIds.addAll(ids);
+    await _save(pl);
   }
 
   Future<void> removeAt(Playlist pl, int i) async {
     pl.songIds.removeAt(i);
-    await _save();
+    await _save(pl);
   }
 
   Future<void> move(Playlist pl, int from, int to) async {
     final id = pl.songIds.removeAt(from);
     pl.songIds.insert(to > from ? to - 1 : to, id);
-    await _save();
+    await _save(pl);
   }
 }
 

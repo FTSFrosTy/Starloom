@@ -33,7 +33,7 @@ class SettingsScreen extends StatelessWidget {
                       src.kind == SourceKind.appFolder ? Icons.phone_iphone_rounded : Icons.folder_rounded,
                       color: src.error != null ? Clay.rose : Clay.candle,
                     ),
-                    title: Text(src.label, style: const TextStyle(color: Clay.bone, fontWeight: FontWeight.w600)),
+                    title: Text(src.label, style: TextStyle(color: Clay.bone, fontWeight: FontWeight.w600)),
                     subtitle: Text(
                       src.error ??
                           '${songCount(lib.songs.where((s) => s.id.startsWith('${src.id}::')).length)}'
@@ -44,7 +44,7 @@ class SettingsScreen extends StatelessWidget {
                         ? null
                         : IconButton(
                             tooltip: 'Remove folder',
-                            icon: const Icon(Icons.close_rounded, color: Clay.ash),
+                            icon: Icon(Icons.close_rounded, color: Clay.ash),
                             onPressed: () => lib.removeSource(src.id),
                           ),
                   ),
@@ -78,7 +78,7 @@ class SettingsScreen extends StatelessWidget {
                   ],
                 ),
                 if (lib.status != null && !lib.scanning)
-                  Padding(padding: const EdgeInsets.only(top: 8), child: Text(lib.status!, style: const TextStyle(color: Clay.rose))),
+                  Padding(padding: const EdgeInsets.only(top: 8), child: Text(lib.status!, style: TextStyle(color: Clay.rose))),
                 if (Platform.isIOS)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
@@ -95,11 +95,59 @@ class SettingsScreen extends StatelessWidget {
               title: 'Look & feel',
               seed: 1010,
               children: [
+                Text('Theme', style: TextStyle(color: Clay.bone, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (final t in kThemes)
+                      Squish(
+                        onTap: () => scope.prefs.setTheme(t.id),
+                        child: ClayBox(
+                          color: t.surface,
+                          seed: t.id.hashCode,
+                          squareness: 4,
+                          depth: 4,
+                          padding: const EdgeInsets.fromLTRB(12, 10, 14, 10),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Container(
+                              width: 22,
+                              height: 22,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(colors: [t.bg, t.accent2, t.accent]),
+                                border: Border.all(color: scope.prefs.themeId == t.id ? t.accent : Colors.transparent, width: 2),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(t.name, style: TextStyle(color: t.text, fontWeight: FontWeight.w700)),
+                            if (scope.prefs.themeId == t.id) ...[const SizedBox(width: 6), Icon(Icons.check_rounded, size: 18, color: t.accent)],
+                          ]),
+                        ),
+                      ),
+                  ],
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8, bottom: 6),
+                  child: Text('More 3D clay worlds are on the way: Gothic Town, Ghost Town, Snow Village, Harvest.', style: Clay.book(14)),
+                ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   activeThumbColor: Clay.candle,
-                  title: const Text('Reduce motion', style: TextStyle(color: Clay.bone)),
-                  subtitle: const Text('Stops the stop-motion wobble and spinning. Saves a little battery.', style: TextStyle(color: Clay.ash, fontSize: 12.5)),
+                  title: Text('Haptics', style: TextStyle(color: Clay.bone)),
+                  subtitle: Text('A light tick when you press clay buttons.', style: TextStyle(color: Clay.ash, fontSize: 12.5)),
+                  value: scope.prefs.haptics,
+                  onChanged: (v) {
+                    Squish.haptics = v;
+                    scope.prefs.setHaptics(v);
+                  },
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  activeThumbColor: Clay.candle,
+                  title: Text('Reduce motion', style: TextStyle(color: Clay.bone)),
+                  subtitle: Text('Stops the stop-motion wobble and spinning. Saves a little battery.', style: TextStyle(color: Clay.ash, fontSize: 12.5)),
                   value: scope.prefs.reduceMotion,
                   onChanged: scope.prefs.setReduceMotion,
                 ),
@@ -109,13 +157,13 @@ class SettingsScreen extends StatelessWidget {
               title: 'About',
               seed: 1020,
               children: [
-                Text('Starloom 0.1', style: Clay.title(22)),
+                Text('Starloom 0.2', style: Clay.title(22)),
                 const SizedBox(height: 4),
                 Text('Plays your own music files. Audio engine: mpv (LGPL).', style: Clay.book(15)),
                 const SizedBox(height: 8),
                 TextButton(
                   onPressed: () => showLicensePage(context: context, applicationName: 'Starloom'),
-                  child: const Text('Open-source licenses', style: TextStyle(color: Clay.candle)),
+                  child: Text('Open-source licenses', style: TextStyle(color: Clay.candle)),
                 ),
               ],
             ),
@@ -138,7 +186,7 @@ class _Section extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
       child: ClayBox(
-        color: const Color(0xFF241B35),
+        color: Clay.panel,
         seed: seed,
         squareness: 5,
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),

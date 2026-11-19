@@ -5,7 +5,10 @@ import '../services/app_scope.dart';
 import '../services/playlists.dart';
 import '../theme/palette.dart';
 import '../widgets/clay.dart';
-import 'playlists_screen.dart';
+import '../widgets/nav.dart';
+import '../widgets/scenery.dart';
+import 'collection_screens.dart';
+import 'home_shell.dart';
 
 /// Paste a Spotify playlist (open it in Spotify desktop, Ctrl+A, Ctrl+C) and
 /// match every line to a file in the library.
@@ -51,31 +54,29 @@ class _ImportScreenState extends State<ImportScreen> {
       songIds: r.matched,
       missing: [...r.missing, ...r.streaming],
     );
-    nav.pushReplacement(MaterialPageRoute<void>(builder: (_) => PlaylistScreen(playlistId: pl.id)));
+    nav.pushReplacement(quickRoute<void>(Backdrop(child: PlaylistScreen(playlistId: pl.id))));
   }
 
   @override
   Widget build(BuildContext context) {
     final r = _report;
-    return Scaffold(
-      backgroundColor: Clay.night,
-      appBar: AppBar(backgroundColor: Colors.transparent, title: Text('Import from Spotify', style: Clay.title(24))),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+    return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: [
+          const ScreenHeader(title: 'Import from Spotify'),
           Text(
             'In Spotify on your PC: open the playlist, click a song, press Ctrl+A then Ctrl+C. '
             'Paste it here. Local songs are matched to your files by title, artist, album and length.',
             style: Clay.book(16, color: Clay.bone),
           ),
           const SizedBox(height: 14),
-          TextField(controller: _name, decoration: const InputDecoration(hintText: 'Playlist name (e.g. Trip 3)')),
+          TextField(controller: _name, style: TextStyle(color: Clay.bone), decoration: const InputDecoration(hintText: 'Playlist name (e.g. Trip 3)')),
           const SizedBox(height: 10),
           TextField(
             controller: _text,
             minLines: 6,
             maxLines: 10,
-            style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+            style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: Clay.bone),
             decoration: const InputDecoration(hintText: 'https://open.spotify.com/local/…'),
             onChanged: (_) => setState(() => _report = null),
           ),
@@ -121,13 +122,12 @@ class _ImportScreenState extends State<ImportScreen> {
               for (final m in r.missing.take(300))
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Text('•  ${m.label}', style: const TextStyle(color: Clay.ash, fontSize: 13)),
+                  child: Text('•  ${m.label}', style: TextStyle(color: Clay.ash, fontSize: 13)),
                 ),
-              if (r.missing.length > 300) Text('…and ${r.missing.length - 300} more', style: const TextStyle(color: Clay.ash)),
+              if (r.missing.length > 300) Text('…and ${r.missing.length - 300} more', style: TextStyle(color: Clay.ash)),
             ],
           ],
         ],
-      ),
     );
   }
 
@@ -136,7 +136,7 @@ class _ImportScreenState extends State<ImportScreen> {
         child: Row(children: [
           Icon(icon, color: color, size: 20),
           const SizedBox(width: 10),
-          Expanded(child: Text(text, style: const TextStyle(color: Clay.bone, fontSize: 15))),
+          Expanded(child: Text(text, style: TextStyle(color: Clay.bone, fontSize: 15))),
         ]),
       );
 }

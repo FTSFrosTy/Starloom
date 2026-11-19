@@ -15,6 +15,9 @@ class PlayerService extends ChangeNotifier {
   PlayerService(this._library);
 
   final Library _library;
+
+  /// Called when a new song starts (for play counts / recently played).
+  void Function(String songId)? onSongStarted;
   final Player player = Player();
   final List<StreamSubscription<Object?>> _subs = [];
 
@@ -29,6 +32,11 @@ class PlayerService extends ChangeNotifier {
 
   /// Id of the song playing now. Song rows listen to just this.
   final ValueNotifier<String?> currentId = ValueNotifier(null);
+
+  /// When the sleep timer will pause playback, if set.
+  DateTime? sleepAt;
+  bool sleepAfterSong = false;
+  Timer? _sleepTimer;
 
   /// Last playback error, shown once by the UI.
   final ValueNotifier<String?> errors = ValueNotifier(null);
@@ -107,8 +115,18 @@ class PlayerService extends ChangeNotifier {
       songs.add(song);
     }
     queue = songs;
+    final before = currentId.value;
+    final songChanged = newIndex != index || current?.id != before;
     index = newIndex;
-    currentId.value = current?.id;
+    final now = current?.id;
+    if (songChanged && now != null && now != before) {
+      if (sleepAfterSong && before != null) {
+        sleepAfterSong = false;
+        player.pause();
+      }
+      onSongStarted?.call(now);
+    }
+    currentId.value = now;
     notifyListeners();
   }
 
@@ -175,8 +193,41 @@ class PlayerService extends ChangeNotifier {
 
   Future<void> setVolume(double v) => player.setVolume(v.clamp(0, 100).toDouble());
 
+  /// Queue editing. Indexes are positions in [queue], which matches mpv's
+  /// playlist as long as every entry is a library song.
+  Future<void> moveInQueue(int from, int to) async {
+    if (from == to) return;
+    await player.move(from, to);
+  }
+
+  Future<void> removeFromQueue(int i) => player.remove(i);
+
+  Future<void> clearUpNext() async {
+    for (var i = queue.length - 1; i > index; i--) {
+      await player.remove(i);
+    }
+  }
+
+  /// Pause after [d], or at the end of the current song when [endOfSong].
+  void setSleepTimer(Duration? d, {bool endOfSong = false}) {
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    sleepAt = null;
+    sleepAfterSong = endOfSong;
+    if (d != null) {
+      sleepAt = DateTime.now().add(d);
+      _sleepTimer = Timer(d, () {
+        player.pause();
+        sleepAt = null;
+        notifyListeners();
+      });
+    }
+    notifyListeners();
+  }
+
   @override
   void dispose() {
+    _sleepTimer?.cancel();
     for (final s in _subs) {
       s.cancel();
     }
