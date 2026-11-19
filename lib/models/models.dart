@@ -14,7 +14,7 @@ class Song {
     required this.hasTags,
   }) : searchKey = '$title $artist $album'.toLowerCase();
 
-  /// Stable id: "<sourceId>::<path relative to the source folder>".
+  /// Stable id: `sourceId::path/relative/to/the/source/folder`.
   /// Survives the app's container path changing between installs.
   final String id;
   String path;
