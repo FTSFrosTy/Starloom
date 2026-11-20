@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart' show PointerHoverEvent;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
