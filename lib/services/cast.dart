@@ -74,7 +74,7 @@ Future<List<CastDevice>> _mdnsDiscover(Duration wait) async {
       try {
         // IP_MULTICAST_IF: 9 on Windows and macOS, 32 on Linux.
         final opt = Platform.isLinux ? 32 : 9;
-        s.setRawOption(RawSocketOption.fromBytes(RawSocketOption.levelIPv4, opt, Uint8List.fromList(a.rawAddress)));
+        s.setRawOption(RawSocketOption(RawSocketOption.levelIPv4, opt, Uint8List.fromList(a.rawAddress)));
       } catch (_) {}
       s.listen((e) {
         if (e != RawSocketEvent.read) return;
