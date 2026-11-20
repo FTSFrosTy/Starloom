@@ -250,21 +250,60 @@ class ClayBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return RepaintBoundary(
-      child: CustomPaint(
-        painter: ClayPainter(
-          color: color ?? Clay.bruise,
-          seed: seed,
-          wobble: wobble,
-          squareness: squareness,
-          depth: depth,
-          boil: boil,
-          pressed: pressed,
+    final c = color ?? Clay.bruise;
+    if (!ClayBox.sculpted) {
+      return RepaintBoundary(
+        child: CustomPaint(
+          painter: ClayPainter(color: c, seed: seed, wobble: wobble, squareness: squareness, depth: depth, boil: boil, pressed: pressed),
+          child: Padding(padding: padding, child: child),
         ),
-        child: Padding(padding: padding, child: child),
-      ),
+      );
+    }
+    // Real sculpted clay (rendered in Blender), tinted to the theme color.
+    final kind = squareness < 3 ? _Sculpt.round : (squareness <= 3.5 ? _Sculpt.pill : _Sculpt.panel);
+    Widget slab(int frame) => DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: kind == _Sculpt.panel ? BorderRadius.circular(22) : null,
+            shape: kind == _Sculpt.round ? BoxShape.circle : BoxShape.rectangle,
+            boxShadow: depth > 0
+                ? [BoxShadow(color: Colors.black.withValues(alpha: 0.42), blurRadius: depth * 1.1, offset: Offset(0, depth * 0.55))]
+                : null,
+            image: DecorationImage(
+              image: AssetImage(kind.asset(frame + seed.abs() % 3)),
+              fit: BoxFit.fill,
+              centerSlice: kind.slice,
+              filterQuality: FilterQuality.medium,
+              colorFilter: ColorFilter.mode(Color.lerp(c, Colors.white, 0.16)!, BlendMode.modulate),
+            ),
+          ),
+          child: Padding(padding: padding, child: child),
+        );
+    if (!boil) return RepaintBoundary(child: slab(0));
+    return RepaintBoundary(
+      child: ListenableBuilder(listenable: StopMotion.instance, builder: (context, _) => slab(StopMotion.instance.frame ~/ 2)),
     );
   }
+
+  /// Use the rendered clay pieces (true) or the drawn ones (false).
+  static bool sculpted = true;
+}
+
+enum _Sculpt {
+  round,
+  pill,
+  panel;
+
+  String asset(int frame) => switch (this) {
+        _Sculpt.round => 'assets/clay/round_${frame % 3}.png',
+        _Sculpt.pill => 'assets/clay/pill_${frame % 3}.png',
+        _Sculpt.panel => 'assets/clay/panel.png',
+      };
+
+  Rect? get slice => switch (this) {
+        _Sculpt.round => null,
+        _Sculpt.pill => const Rect.fromLTRB(110, 40, 256, 75),
+        _Sculpt.panel => const Rect.fromLTRB(72, 72, 290, 291),
+      };
 }
 
 /// Squishes like soft clay when pressed.
@@ -425,8 +464,13 @@ class Pebble extends StatelessWidget {
     return SizedBox(
       width: size,
       height: size,
-      child: CustomPaint(
-        painter: ClayPainter(color: color, seed: h, wobble: 2.4, squareness: 2.4, depth: 0),
+      child: ClayBox(
+        color: color,
+        seed: h,
+        wobble: 2.4,
+        squareness: 2.4,
+        depth: 0,
+        padding: EdgeInsets.zero,
         child: Center(
           child: Text(
             glyph ?? (seedText.isEmpty ? '?' : seedText.characters.first.toUpperCase()),

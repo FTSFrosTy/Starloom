@@ -167,6 +167,9 @@ ImportReport importSpotifyList(String text, List<Song> library) {
   final byTitle = <String, List<Song>>{};
   for (final s in library) {
     byTitle.putIfAbsent(normalizeTitle(s.title), () => []).add(s);
+    // Untagged files: Spotify uses the raw file name as the title.
+    final st = normalizeTitle(s.stem);
+    if (st != normalizeTitle(s.title)) byTitle.putIfAbsent(st, () => []).add(s);
   }
 
   final matched = <String>[];
@@ -220,6 +223,7 @@ Song? _bestMatch(_LocalEntry e, Map<String, List<Song>> byTitle) {
     if (e.artist.isNotEmpty && normalizeTitle(e.artist) == normalizeTitle(s.artist)) score += 5;
     if (e.album.isNotEmpty && normalizeTitle(e.album) == normalizeTitle(s.album)) score += 3;
     if (e.artist.isEmpty && e.album.isEmpty && !s.hasTags) score += 2;
+    if (normalizeTitle(s.stem) == key && !s.hasTags) score += 2;
     if (score > bestScore) {
       bestScore = score;
       best = s;

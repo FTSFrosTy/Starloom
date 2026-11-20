@@ -156,6 +156,22 @@ class SettingsScreen extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 8, bottom: 6),
                   child: Text('Moonlit is the original. The others are real 3D clay sets, built and lit in Blender.', style: Clay.book(14)),
                 ),
+                ListenableBuilder(
+                  listenable: scope.covers,
+                  builder: (context, _) => SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    activeThumbColor: Clay.candle,
+                    title: Text('Find missing covers online', style: TextStyle(color: Clay.bone)),
+                    subtitle: Text(
+                      scope.covers.running
+                          ? 'Looking… found ${scope.covers.found} so far'
+                          : 'Looks up songs without artwork in Apple\'s iTunes search (sends the song and artist name).',
+                      style: TextStyle(color: Clay.ash, fontSize: 12.5),
+                    ),
+                    value: scope.covers.enabled,
+                    onChanged: scope.covers.setEnabled,
+                  ),
+                ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   activeThumbColor: Clay.candle,

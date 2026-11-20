@@ -206,6 +206,15 @@ class Library extends ChangeNotifier {
     }
   }
 
+  /// Save the song list (after cover art was found, for example).
+  Future<void> saveSongs() async {
+    _albums = null;
+    _artists = null;
+    version++;
+    notifyListeners();
+    await _storage.write('library.json', _songs.map((s) => s.toJson()).toList());
+  }
+
   Future<void> removeSource(String id) async {
     sources.removeWhere((s) => s.id == id);
     _setSongs(_songs.where((s) => !s.id.startsWith('$id::')).toList());
@@ -299,6 +308,7 @@ List<Map<String, Object?>> scanFolder(String root, String sourceId, Map<String, 
     final stem = p.basenameWithoutExtension(name);
     String title = stem;
     String artist = '';
+    String? guessedArtist;
     String album = '';
     int durationMs = 0;
     int trackNo = 0;
@@ -315,6 +325,11 @@ List<Map<String, Object?>> scanFolder(String root, String sourceId, Map<String, 
       album = m.album?.trim() ?? '';
       durationMs = m.duration?.inMilliseconds ?? 0;
       trackNo = m.trackNumber ?? 0;
+      if (!hasTags) {
+        final g = guessFromFileName(stem);
+        title = g.$1;
+        guessedArtist = g.$2;
+      }
       if (m.pictures.isNotEmpty) {
         // One thumbnail per album (or per song when there's no album tag).
         final key = _fnv(album.isNotEmpty ? 'a|${album.toLowerCase()}|${artist.toLowerCase()}' : 's|$id');
@@ -322,8 +337,12 @@ List<Map<String, Object?>> scanFolder(String root, String sourceId, Map<String, 
         if (ok) artKey = key;
       }
     } catch (_) {
-      // Unreadable tags: keep the file name as the title.
+      // Unreadable tags: make the best of the file name.
+      final g = guessFromFileName(stem);
+      title = g.$1;
+      guessedArtist = g.$2;
     }
+    if (artist.isEmpty && guessedArtist != null) artist = guessedArtist;
     out.add({
       'id': id,
       'path': e.path,
@@ -336,10 +355,24 @@ List<Map<String, Object?>> scanFolder(String root, String sourceId, Map<String, 
       'hasTags': hasTags,
       'trackNo': trackNo,
       'artKey': artKey,
+      'stem': stem,
       'v': kSongSchema,
     });
   }
   return out;
+}
+
+/// "Juice_WRLD_-_Back_Home (2)" -> ("Back Home", "Juice WRLD").
+/// Returns (title, artist or null).
+(String, String?) guessFromFileName(String stem) {
+  var s = stem.replaceAll('_', ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+  s = s.replaceAll(RegExp(r'\s*\(\d+\)$'), '');
+  s = s.replaceAll(RegExp(r'\s*[\(\[](official|lyric|audio|video|visuali[sz]er|hq|hd|explicit)[^\)\]]*[\)\]]', caseSensitive: false), '');
+  final dash = s.indexOf(' - ');
+  if (dash > 0 && dash < s.length - 3) {
+    return (s.substring(dash + 3).trim(), s.substring(0, dash).trim());
+  }
+  return (s.isEmpty ? stem : s, null);
 }
 
 /// Shrinks embedded cover art to a 200 px JPEG. Returns false if it can't.

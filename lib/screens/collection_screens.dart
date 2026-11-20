@@ -5,6 +5,7 @@ import '../services/app_scope.dart';
 import '../theme/palette.dart';
 import '../widgets/clay.dart';
 import '../widgets/cover.dart';
+import '../widgets/context_menu.dart';
 import '../widgets/nav.dart';
 import '../widgets/song_tile.dart';
 import 'home_shell.dart';
@@ -548,7 +549,9 @@ class AlbumCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: size,
-      child: Squish(
+      child: RightClick(
+        onMenu: (at) => songsMenu(context, at, album.songs, albumArtist: album.artist),
+        child: Squish(
         onTap: () => Nav.push(AlbumScreen(albumKey: album.key)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -559,6 +562,7 @@ class AlbumCard extends StatelessWidget {
             Text(album.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Clay.ash, fontSize: 12)),
           ],
         ),
+      ),
       ),
     );
   }

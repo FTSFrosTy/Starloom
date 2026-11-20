@@ -25,6 +25,11 @@ class PlayerService extends ChangeNotifier {
   final Map<String, Song> remote = {};
 
   List<Song> queue = const [];
+
+  /// How many songs right after the current one were added by hand
+  /// ("Add to queue" / "Play next"). They play before the rest of the
+  /// album/playlist, in the order they were added.
+  int queuedAhead = 0;
   int index = -1;
   bool playing = false;
   bool shuffle = false;
@@ -122,6 +127,16 @@ class PlayerService extends ChangeNotifier {
     final songChanged = newIndex != index || current?.id != before;
     index = newIndex;
     final now = current?.id;
+    if (newIndex != index) {
+      // Moving forward one step uses up a hand-queued song; jumping
+      // anywhere else leaves the hand-queued block behind.
+      if (newIndex == index + 1 && queuedAhead > 0) {
+        queuedAhead--;
+      } else if (newIndex != index + 1) {
+        queuedAhead = 0;
+      }
+    }
+    queuedAhead = queuedAhead.clamp(0, (songs.length - newIndex - 1).clamp(0, 1 << 20));
     if (songChanged && now != null && now != before) {
       if (sleepAfterSong && before != null) {
         sleepAfterSong = false;
@@ -148,6 +163,7 @@ class PlayerService extends ChangeNotifier {
       at = 0;
     }
     if (shuffle) await player.setShuffle(false);
+    queuedAhead = 0;
     await player.openAll(list.map(_media).toList(), index: at, play: true);
   }
 
@@ -184,14 +200,24 @@ class PlayerService extends ChangeNotifier {
     return player.setLoop(nextLoop);
   }
 
+  /// Straight after the current song, ahead of anything already queued.
   Future<void> playNext(Song s) async {
     if (current == null) return playSongs([s], 0);
+    queuedAhead++;
     await player.insert(player.state.playback.playlist.index + 1, _media(s));
   }
 
+  /// After the current song and the songs you already queued, but before
+  /// the rest of the album/playlist.
   Future<void> addToQueue(Song s) async {
     if (current == null) return playSongs([s], 0);
-    await player.add(_media(s));
+    final at = player.state.playback.playlist.index + 1 + queuedAhead;
+    queuedAhead++;
+    if (at >= queue.length) {
+      await player.add(_media(s));
+    } else {
+      await player.insert(at, _media(s));
+    }
   }
 
   Future<void> setVolume(double v) => player.setVolume(v.clamp(0, 100).toDouble());
@@ -203,12 +229,25 @@ class PlayerService extends ChangeNotifier {
     await player.move(from, to);
   }
 
-  Future<void> removeFromQueue(int i) => player.remove(i);
+  Future<void> removeFromQueue(int i) {
+    if (i > index && i <= index + queuedAhead) queuedAhead--;
+    return player.remove(i);
+  }
 
   Future<void> clearUpNext() async {
+    queuedAhead = 0;
     for (var i = queue.length - 1; i > index; i--) {
       await player.remove(i);
     }
+  }
+
+  /// Clears only the songs you queued by hand.
+  Future<void> clearQueued() async {
+    for (var i = index + queuedAhead; i > index; i--) {
+      await player.remove(i);
+    }
+    queuedAhead = 0;
+    notifyListeners();
   }
 
   /// Pause after [d], or at the end of the current song when [endOfSong].

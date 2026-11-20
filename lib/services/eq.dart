@@ -39,6 +39,7 @@ class EqSettings {
     this.treble = 0,
     this.preamp = 0,
     this.presetName = 'Flat',
+    this.hats = 0,
   }) : bands = bands ?? List<double>.filled(10, 0);
 
   bool enabled;
@@ -48,6 +49,10 @@ class EqSettings {
   double preamp;
   String presetName;
 
+  /// Hi-hat tamer, 0..1: a de-esser that ducks harsh highs only when they
+  /// spike, plus a gentle fixed dip around 8-9 kHz.
+  double hats;
+
   Map<String, Object?> toJson() => {
         'enabled': enabled,
         'bands': bands,
@@ -55,6 +60,7 @@ class EqSettings {
         'treble': treble,
         'preamp': preamp,
         'presetName': presetName,
+        'hats': hats,
       };
 
   static EqSettings fromJson(Map<String, Object?> j) {
@@ -66,6 +72,7 @@ class EqSettings {
       treble: (j['treble'] as num?)?.toDouble() ?? 0,
       preamp: (j['preamp'] as num?)?.toDouble() ?? 0,
       presetName: (j['presetName'] as String?) ?? 'Custom',
+      hats: (j['hats'] as num?)?.toDouble() ?? 0,
     );
   }
 
@@ -84,6 +91,10 @@ class EqSettings {
         ),
       BassEffect(enabled: on, frequency: 80, gain: bass),
       TrebleEffect(enabled: on, frequency: 6000, gain: treble),
+      // Hi-hat tamer. Always in the chain (strength 0 = no effect) so moving
+      // the slider never rebuilds the filters.
+      EqualizerEffect(enabled: on, frequency: 8500, gain: -9 * hats, width: 1.1, widthType: EqualizerWidthType.o),
+      DeesserEffect(enabled: on, i: (hats * 0.9).clamp(0.0, 1.0), m: 0.5 + 0.45 * hats, f: 0.5),
       // Last stage: catches peaks so heavy bass boost doesn't crackle.
       const AlimiterEffect(limit: 0.97, level: false),
     ];
@@ -128,6 +139,11 @@ class EqController extends ChangeNotifier {
   void setTreble(double v) {
     settings.treble = v;
     settings.presetName = 'Custom';
+    _changed();
+  }
+
+  void setHats(double v) {
+    settings.hats = v.clamp(0.0, 1.0);
     _changed();
   }
 

@@ -128,6 +128,21 @@ class EqScreen extends StatelessWidget {
                       onChanged: eq.setTreble,
                     ),
                     _KnobRow(
+                      label: 'Hi-hats',
+                      value: s.hats * 100,
+                      min: 0,
+                      max: 100,
+                      color: Clay.cool,
+                      seed: 954,
+                      unit: '%',
+                      onChanged: (v) => eq.setHats(v / 100),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                      child: Text('Hi-hat tamer: turns down loud, harsh hi-hats and cymbals only when they spike, so the rest of the song keeps its sparkle.',
+                          style: Clay.book(13.5)),
+                    ),
+                    _KnobRow(
                       label: 'Preamp',
                       value: s.preamp,
                       min: kPreampMin,
@@ -173,6 +188,7 @@ class _KnobRow extends StatelessWidget {
     required this.seed,
     required this.onChanged,
     this.centerZero = false,
+    this.unit = 'dB',
   });
 
   final String label;
@@ -180,6 +196,7 @@ class _KnobRow extends StatelessWidget {
   final Color color;
   final int seed;
   final bool centerZero;
+  final String unit;
   final ValueChanged<double> onChanged;
 
   @override
@@ -201,7 +218,7 @@ class _KnobRow extends StatelessWidget {
           ),
           SizedBox(
             width: 56,
-            child: Text('${EqScreen._db(value)} dB', textAlign: TextAlign.right, style: TextStyle(color: Clay.bone, fontSize: 13)),
+            child: Text(unit == '%' ? '${value.round()}%' : '${EqScreen._db(value)} dB', textAlign: TextAlign.right, style: TextStyle(color: Clay.bone, fontSize: 13)),
           ),
         ],
       ),

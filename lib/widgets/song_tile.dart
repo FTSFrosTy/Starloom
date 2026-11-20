@@ -5,6 +5,7 @@ import '../screens/collection_screens.dart';
 import '../services/app_scope.dart';
 import '../theme/palette.dart';
 import 'cover.dart';
+import 'context_menu.dart';
 import 'nav.dart';
 
 const double kSongRowHeight = 64;
@@ -99,7 +100,10 @@ class SongTile extends StatelessWidget {
     );
 
     // Swipe right to queue, like Spotify. The row snaps back.
-    return Dismissible(
+    // Right-click (PC) opens the full menu.
+    return RightClick(
+      onMenu: (at) => songMenu(context, at, song, onRemove: onRemove),
+      child: Dismissible(
       key: const ValueKey('swipe'),
       direction: DismissDirection.startToEnd,
       dismissThresholds: const {DismissDirection.startToEnd: 0.25},
@@ -119,6 +123,7 @@ class SongTile extends StatelessWidget {
         return false;
       },
       child: row,
+    ),
     );
   }
 }

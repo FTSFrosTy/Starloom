@@ -2,7 +2,7 @@
 library;
 
 /// Bump when the scan reads new fields, so old cache entries get re-read.
-const int kSongSchema = 2;
+const int kSongSchema = 3;
 
 class Song {
   Song({
@@ -17,7 +17,9 @@ class Song {
     required this.hasTags,
     this.trackNo = 0,
     this.artKey,
-  }) : searchKey = '$title $artist $album'.toLowerCase();
+    String? stem,
+  })  : stem = stem ?? title,
+        searchKey = '$title $artist $album ${stem ?? ''}'.toLowerCase();
 
   /// Stable id: `sourceId::path/relative/to/the/source/folder`.
   /// Survives the app's container path changing between installs.
@@ -37,9 +39,12 @@ class Song {
   /// Track number inside its album (0 if unknown).
   final int trackNo;
 
-  /// Name of the cached cover thumbnail (in the art folder), if the file
-  /// had embedded artwork.
-  final String? artKey;
+  /// Name of the cached cover thumbnail (in the art folder): from the
+  /// file's own artwork, or looked up online.
+  String? artKey;
+
+  /// File name without extension (what Spotify calls untagged songs).
+  final String stem;
 
   /// Groups songs into albums: same album name + artist.
   String get albumKey => album.isEmpty ? '' : '${album.toLowerCase()}|${artist.toLowerCase()}';
@@ -63,6 +68,7 @@ class Song {
         'hasTags': hasTags,
         'trackNo': trackNo,
         'artKey': artKey,
+        'stem': stem,
         'v': kSongSchema,
       };
 
@@ -78,6 +84,7 @@ class Song {
         hasTags: (j['hasTags'] as bool?) ?? false,
         trackNo: (j['trackNo'] as num?)?.toInt() ?? 0,
         artKey: j['artKey'] as String?,
+        stem: j['stem'] as String?,
       );
 }
 

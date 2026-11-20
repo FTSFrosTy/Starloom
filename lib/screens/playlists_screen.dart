@@ -5,6 +5,7 @@ import '../services/app_scope.dart';
 import '../theme/palette.dart';
 import '../widgets/clay.dart';
 import '../widgets/cover.dart';
+import '../widgets/context_menu.dart';
 import '../widgets/nav.dart';
 import '../widgets/song_tile.dart';
 import 'collection_screens.dart';
@@ -87,7 +88,14 @@ class PlaylistsScreen extends StatelessWidget {
     final lib = AppScope.of(context).library;
     final songs = [for (final id in pl.songIds) ?lib.byId(id)];
     final missing = pl.missing.where((m) => !m.streaming).length;
+    final store = AppScope.of(context).playlists;
     return _PlaylistCard(
+      onMenu: (at) => songsMenu(context, at, songs,
+          onRename: () async {
+            final name = await promptText(context, title: 'Rename', initial: pl.name);
+            if (name != null) await store.rename(pl, name);
+          },
+          onDelete: () => store.delete(pl)),
       title: pl.name,
       subtitle: [songCount(songs.length), if (missing > 0) '$missing not found'].join('  ·  '),
       art: Mosaic(artKeys: [for (final s in songs) ?s.artKey], seedText: pl.id, size: 62),
@@ -98,7 +106,9 @@ class PlaylistsScreen extends StatelessWidget {
 }
 
 class _PlaylistCard extends StatelessWidget {
-  const _PlaylistCard({required this.title, required this.subtitle, required this.art, required this.seed, required this.onTap});
+  const _PlaylistCard({required this.title, required this.subtitle, required this.art, required this.seed, required this.onTap, this.onMenu});
+
+  final void Function(Offset)? onMenu;
 
   final String title;
   final String subtitle;
@@ -110,7 +120,9 @@ class _PlaylistCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Squish(
+      child: RightClick(
+        onMenu: (at) => onMenu?.call(at),
+        child: Squish(
         onTap: onTap,
         child: ClayBox(
           color: Clay.bruise,
@@ -135,6 +147,7 @@ class _PlaylistCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

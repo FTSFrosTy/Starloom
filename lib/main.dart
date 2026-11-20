@@ -7,6 +7,8 @@ import 'package:mpv_audio_kit/mpv_audio_kit.dart';
 
 import 'screens/home_shell.dart';
 import 'services/app_scope.dart';
+import 'services/beat.dart';
+import 'services/cover_finder.dart';
 import 'services/eq.dart';
 import 'services/library.dart';
 import 'services/player_service.dart';
@@ -42,7 +44,9 @@ Future<void> main() async {
   await eq.init(player.player);
   await player.setVolume(prefs.volume);
   player.onSongStarted = user.recordPlay;
+  Beat.instance.attach(player.player);
   final sync = SyncService(storage, library, playlists, user, player);
+  final covers = CoverFinder(storage, library);
 
   runApp(AppScope(
     library: library,
@@ -52,11 +56,15 @@ Future<void> main() async {
     prefs: prefs,
     user: user,
     sync: sync,
+    covers: covers,
     child: const StarloomApp(),
   ));
 
   // Loads the cached library instantly, then rescans in the background.
-  unawaited(library.init().then((_) => sync.init()));
+  unawaited(library.init().then((_) async {
+    await sync.init();
+    await covers.init();
+  }));
 }
 
 class StarloomApp extends StatefulWidget {
@@ -84,6 +92,19 @@ class _StarloomAppState extends State<StarloomApp> with WidgetsBindingObserver {
     _prefs.removeListener(_onPrefs);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  bool _precached = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_precached) return;
+    _precached = true;
+    // Load the sculpted clay pieces up front so buttons never pop in.
+    for (final n in ['round_0', 'round_1', 'round_2', 'pill_0', 'pill_1', 'pill_2', 'panel']) {
+      precacheImage(AssetImage('assets/clay/$n.png'), context);
+    }
   }
 
   /// Theme colors are read straight from [Clay], so after a theme switch

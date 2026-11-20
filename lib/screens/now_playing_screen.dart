@@ -14,6 +14,7 @@ import '../widgets/cover.dart';
 import '../widgets/nav.dart';
 import '../widgets/scenery.dart';
 import '../widgets/song_tile.dart';
+import '../widgets/visualizer.dart';
 import 'collection_screens.dart';
 import 'eq_screen.dart';
 import 'home_shell.dart';
@@ -142,7 +143,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                           const SizedBox(height: 10),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 20),
-                            child: CandleVisualizer(player: player.player, height: 110),
+                            child: ThemeVisualizer(player: player.player, height: 110),
                           ),
                           const SizedBox(height: 6),
                           Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Scrubber(player: player)),
@@ -280,7 +281,9 @@ void showQueue(BuildContext context) {
                 padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
                 child: Row(children: [
                   Expanded(child: Text('Queue', style: Clay.title(26))),
-                  if (player.index < q.length - 1)
+                  if (player.queuedAhead > 0)
+                    TextButton(onPressed: player.clearQueued, child: Text('Clear queue', style: TextStyle(color: Clay.candle)))
+                  else if (player.index < q.length - 1)
                     TextButton(onPressed: player.clearUpNext, child: Text('Clear up next', style: TextStyle(color: Clay.candle))),
                 ]),
               ),
@@ -305,7 +308,11 @@ void showQueue(BuildContext context) {
                               child: Icon(Icons.delete_rounded, color: Clay.bone),
                             ),
                             onDismissed: (_) => player.removeFromQueue(i),
-                            child: SizedBox(
+                            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              if (i == player.index) _queueHeader('Now playing'),
+                              if (i == player.index + 1 && player.queuedAhead > 0) _queueHeader('Next in queue'),
+                              if (i == player.index + 1 + player.queuedAhead && i < q.length) _queueHeader('Next up'),
+                              SizedBox(
                               height: 64,
                               child: ListTile(
                                 onTap: () => player.jumpTo(i),
@@ -320,6 +327,7 @@ void showQueue(BuildContext context) {
                                 trailing: ReorderableDragStartListener(index: i, child: Icon(Icons.drag_handle_rounded, color: Clay.ash)),
                               ),
                             ),
+                            ]),
                           );
                         },
                       ),
@@ -331,6 +339,11 @@ void showQueue(BuildContext context) {
     ),
   );
 }
+
+Widget _queueHeader(String text) => Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 2),
+      child: Text(text, style: Clay.title(18, color: Clay.candle)),
+    );
 
 class _Controls extends StatelessWidget {
   const _Controls({required this.player});

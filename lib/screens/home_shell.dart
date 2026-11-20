@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mpv_audio_kit/mpv_audio_kit.dart' show Loop;
@@ -7,9 +9,11 @@ import '../services/app_scope.dart';
 import '../services/player_service.dart';
 import '../theme/palette.dart';
 import '../widgets/clay.dart';
+import '../widgets/context_menu.dart';
 import '../widgets/cover.dart';
 import '../widgets/nav.dart';
 import '../widgets/scenery.dart';
+import '../widgets/visualizer.dart';
 import 'collection_screens.dart';
 import 'eq_screen.dart';
 import 'home_screen.dart';
@@ -125,6 +129,7 @@ class _HomeShellState extends State<HomeShell> {
                         children: [
                           _Sidebar(tab: _tab, tabs: _tabs, onTap: _select),
                           Expanded(child: _content()),
+                          if (MediaQuery.sizeOf(context).width >= 1180) const NowPlayingPanel(),
                         ],
                       ),
                     ),
@@ -350,14 +355,18 @@ class _Sidebar extends StatelessWidget {
                           },
                         ),
                         for (final pl in lists)
-                          _SideItem(
-                            icon: Icons.queue_music_rounded,
-                            label: pl.name,
-                            dense: true,
-                            onTap: () {
-                              onTap(2);
-                              Nav.push(PlaylistScreen(playlistId: pl.id));
-                            },
+                          RightClick(
+                            onMenu: (at) => songsMenu(context, at, [for (final id in pl.songIds) ?scope.library.byId(id)],
+                                onDelete: () => scope.playlists.delete(pl)),
+                            child: _SideItem(
+                              icon: Icons.queue_music_rounded,
+                              label: pl.name,
+                              dense: true,
+                              onTap: () {
+                                onTap(2);
+                                Nav.push(PlaylistScreen(playlistId: pl.id));
+                              },
+                            ),
                           ),
                       ],
                     );
@@ -687,4 +696,107 @@ String totalLength(Iterable<Song> songs) {
   final d = Duration(milliseconds: ms);
   if (d.inHours > 0) return '${d.inHours} hr ${d.inMinutes % 60} min';
   return '${d.inMinutes} min';
+}
+
+/// PC: the always-visible "Now playing" column on the right, like Spotify's
+/// desktop app: spinning clay record, the theme's visualizer, and what's next.
+class NowPlayingPanel extends StatelessWidget {
+  const NowPlayingPanel({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = AppScope.of(context);
+    final player = scope.player;
+    return SizedBox(
+      width: 330,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 12, 12, 10),
+        child: ClayBox(
+          color: Clay.panel,
+          seed: 1717,
+          squareness: 6,
+          wobble: 0.5,
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+          child: ListenableBuilder(
+            listenable: Listenable.merge([player, scope.user]),
+            builder: (context, _) {
+              final song = player.current;
+              final liked = song != null && scope.user.isLiked(song.id);
+              final upcoming = player.index >= 0 ? player.queue.skip(player.index + 1).take(6).toList() : const <Song>[];
+              final art = scope.library.artPath(song?.artKey);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Now playing', style: Clay.title(22)),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 230,
+                    child: Center(
+                      child: ClayRecord(
+                        spinning: player.playing,
+                        seedText: song?.album.isNotEmpty == true ? song!.album : (song?.title ?? 'starloom'),
+                        cover: player.cover != null
+                            ? ResizeImage(player.cover!.image, width: 480)
+                            : (art == null ? null : FileImage(File(art))),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(song?.title ?? 'Nothing playing', maxLines: 2, overflow: TextOverflow.ellipsis, style: Clay.title(22)),
+                        Text(song?.subtitle ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: Clay.book(15)),
+                      ]),
+                    ),
+                    if (song != null)
+                      IconButton(
+                        tooltip: liked ? 'Unlike' : 'Like',
+                        icon: Icon(liked ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: liked ? Clay.rose : Clay.ash),
+                        onPressed: () => scope.user.toggleLike(song.id),
+                      ),
+                  ]),
+                  const SizedBox(height: 8),
+                  ThemeVisualizer(player: player.player, height: 120),
+                  const SizedBox(height: 10),
+                  if (upcoming.isNotEmpty) ...[
+                    Row(children: [
+                      Expanded(child: Text(player.queuedAhead > 0 ? 'Next in queue' : 'Next up', style: Clay.title(18, color: Clay.candle))),
+                      TextButton(onPressed: () => showQueue(context), child: Text('Open queue', style: TextStyle(color: Clay.ash, fontSize: 12))),
+                    ]),
+                    Expanded(
+                      child: ListView(
+                        padding: EdgeInsets.zero,
+                        children: [
+                          for (var k = 0; k < upcoming.length; k++)
+                            InkWell(
+                              borderRadius: BorderRadius.circular(10),
+                              onTap: () => player.jumpTo(player.index + 1 + k),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 5),
+                                child: Row(children: [
+                                  Cover(artKey: upcoming[k].artKey, seedText: upcoming[k].album.isNotEmpty ? upcoming[k].album : upcoming[k].title, size: 38),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                      Text(upcoming[k].title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Clay.bone, fontWeight: FontWeight.w600, fontSize: 13)),
+                                      Text(upcoming[k].subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Clay.ash, fontSize: 11.5)),
+                                    ]),
+                                  ),
+                                ]),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ] else
+                    const Spacer(),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
 }
