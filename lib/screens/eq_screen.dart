@@ -75,7 +75,7 @@ class EqScreen extends StatelessWidget {
                         color: Clay.panel,
                         seed: 901,
                         squareness: 5,
-                        padding: const EdgeInsets.fromLTRB(6, 14, 6, 10),
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                         child: SizedBox(
                           height: 250,
                           child: Row(
@@ -127,21 +127,35 @@ class EqScreen extends StatelessWidget {
                       centerZero: true,
                       onChanged: eq.setTreble,
                     ),
-                    _KnobRow(
-                      label: 'Hi-hats',
-                      value: s.hats * 100,
-                      min: 0,
-                      max: 100,
-                      color: Clay.ghost,
-                      seed: 954,
-                      unit: '%',
-                      onChanged: (v) => eq.setHats(v / 100),
-                    ),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                      child: Text('Hi-hat tamer: turns down loud, harsh hi-hats and cymbals only when they spike, so the rest of the song keeps its sparkle.',
-                          style: Clay.book(13.5)),
+                      padding: const EdgeInsets.fromLTRB(20, 4, 12, 0),
+                      child: Row(children: [
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text('Hi-hat tamer', style: TextStyle(color: Clay.bone, fontWeight: FontWeight.w700, fontSize: 15)),
+                            Text('Turns down the sizzle where hi-hats and cymbals sit.', style: Clay.book(13.5)),
+                          ]),
+                        ),
+                        Switch(value: s.hatsOn, activeThumbColor: Clay.candle, onChanged: eq.setHatsOn),
+                      ]),
                     ),
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOutCubic,
+                      child: s.hatsOn
+                          ? _KnobRow(
+                              label: 'Strength',
+                              value: s.hats * 100,
+                              min: 0,
+                              max: 100,
+                              color: Clay.ghost,
+                              seed: 954,
+                              unit: '%',
+                              onChanged: (v) => eq.setHats(v / 100),
+                            )
+                          : const SizedBox(width: double.infinity),
+                    ),
+                    const SizedBox(height: 6),
                     _KnobRow(
                       label: 'Preamp',
                       value: s.preamp,
@@ -155,7 +169,7 @@ class EqScreen extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                       child: Text(
-                        'Tip: if heavy bass sounds crunchy, lower Preamp a few dB. A limiter at the end keeps peaks from clipping.',
+                        'Tip: if heavy bass sounds crunchy, lower Preamp a few dB.',
                         style: Clay.book(14),
                       ),
                     ),

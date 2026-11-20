@@ -39,7 +39,8 @@ class EqSettings {
     this.treble = 0,
     this.preamp = 0,
     this.presetName = 'Flat',
-    this.hats = 0,
+    this.hats = 0.5,
+    this.hatsOn = false,
   }) : bands = bands ?? List<double>.filled(10, 0);
 
   bool enabled;
@@ -49,8 +50,9 @@ class EqSettings {
   double preamp;
   String presetName;
 
-  /// Hi-hat tamer, 0..1: a de-esser that ducks harsh highs only when they
-  /// spike, plus a gentle fixed dip around 8-9 kHz.
+  /// Hi-hat tamer: a gentle fixed dip around 8.5 and 12 kHz, where hi-hats
+  /// and cymbals sit. Off by default; [hats] (0..1) is how strong.
+  bool hatsOn;
   double hats;
 
   Map<String, Object?> toJson() => {
@@ -60,7 +62,8 @@ class EqSettings {
         'treble': treble,
         'preamp': preamp,
         'presetName': presetName,
-        'hats': hats,
+        'hats2': hats,
+        'hatsOn': hatsOn,
       };
 
   static EqSettings fromJson(Map<String, Object?> j) {
@@ -72,7 +75,9 @@ class EqSettings {
       treble: (j['treble'] as num?)?.toDouble() ?? 0,
       preamp: (j['preamp'] as num?)?.toDouble() ?? 0,
       presetName: (j['presetName'] as String?) ?? 'Custom',
-      hats: (j['hats'] as num?)?.toDouble() ?? 0,
+      // 'hats' was the old de-esser version: start fresh (off) from it.
+      hats: (j['hats2'] as num?)?.toDouble() ?? 0.5,
+      hatsOn: (j['hatsOn'] as bool?) ?? false,
     );
   }
 
@@ -91,14 +96,20 @@ class EqSettings {
         ),
       BassEffect(enabled: on, frequency: 80, gain: bass),
       TrebleEffect(enabled: on, frequency: 6000, gain: treble),
-      // Hi-hat tamer. Always in the chain (strength 0 = no effect) so moving
-      // the slider never rebuilds the filters.
-      EqualizerEffect(enabled: on, frequency: 8500, gain: -9 * hats, width: 1.1, widthType: EqualizerWidthType.o),
-      DeesserEffect(enabled: on, i: (hats * 0.9).clamp(0.0, 1.0), m: 0.5 + 0.45 * hats, f: 0.5),
-      // Last stage: catches peaks so heavy bass boost doesn't crackle.
-      const AlimiterEffect(limit: 0.97, level: false),
+      // Hi-hat tamer: plain EQ dips (no compressor, so nothing can duck or
+      // cut out on a drop). Always in the chain at 0 dB when off, so turning
+      // it on/off or sliding it never rebuilds the filters.
+      EqualizerEffect(enabled: on, frequency: 8500, gain: hatsOn ? -8 * hats : 0, width: 1.0, widthType: EqualizerWidthType.o),
+      EqualizerEffect(enabled: on, frequency: 12000, gain: hatsOn ? -5 * hats : 0, width: 1.0, widthType: EqualizerWidthType.o),
+      // Last stage: only catches real clipping. It stays transparent (limit
+      // 1.0) unless something is boosted, and releases slowly so heavy bass
+      // doesn't make it pump.
+      AlimiterEffect(enabled: on, limit: boosting ? 0.95 : 1.0, attack: 5, release: 250, level: false),
     ];
   }
+
+  /// Any gain above 0 dB anywhere in the chain.
+  bool get boosting => preamp > 0 || bass > 0 || treble > 0 || bands.any((b) => b > 0);
 }
 
 /// Holds the EQ state, saves it, and pushes it to the player.
@@ -144,6 +155,11 @@ class EqController extends ChangeNotifier {
 
   void setHats(double v) {
     settings.hats = v.clamp(0.0, 1.0);
+    _changed();
+  }
+
+  void setHatsOn(bool v) {
+    settings.hatsOn = v;
     _changed();
   }
 

@@ -260,22 +260,13 @@ class ClayBox extends StatelessWidget {
       );
     }
     // Real sculpted clay (rendered in Blender), tinted to the theme color.
+    // The piece is nine-sliced at a scale worked out from the box's real
+    // size, so small chips get small rounded ends instead of giant
+    // overlapping ones.
     final kind = squareness < 3 ? _Sculpt.round : (squareness <= 3.5 ? _Sculpt.pill : _Sculpt.panel);
+    final tint = Color.lerp(c, Colors.white, 0.16)!;
     Widget slab(int frame) => DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: kind == _Sculpt.panel ? BorderRadius.circular(22) : null,
-            shape: kind == _Sculpt.round ? BoxShape.circle : BoxShape.rectangle,
-            boxShadow: depth > 0
-                ? [BoxShadow(color: Colors.black.withValues(alpha: 0.42), blurRadius: depth * 1.1, offset: Offset(0, depth * 0.55))]
-                : null,
-            image: DecorationImage(
-              image: AssetImage(kind.asset(frame + seed.abs() % 3)),
-              fit: BoxFit.fill,
-              centerSlice: kind.slice,
-              filterQuality: FilterQuality.medium,
-              colorFilter: ColorFilter.mode(Color.lerp(c, Colors.white, 0.16)!, BlendMode.modulate),
-            ),
-          ),
+          decoration: _SculptDecoration(kind, kind.asset(frame + seed.abs() % 3), tint, depth),
           child: Padding(padding: padding, child: child),
         );
     if (!boil) return RepaintBoundary(child: slab(0));
@@ -304,6 +295,92 @@ enum _Sculpt {
         _Sculpt.pill => const Rect.fromLTRB(110, 40, 256, 75),
         _Sculpt.panel => const Rect.fromLTRB(72, 72, 290, 291),
       };
+
+  /// Image-pixels per screen-pixel for a box of [size], so the rounded
+  /// ends always fit: pills match the box height (and shrink further if the
+  /// box is short), panels get corners about a quarter of the short side.
+  double scaleFor(Size size) {
+    if (size.isEmpty) return 1;
+    switch (this) {
+      case _Sculpt.round:
+        return 1;
+      case _Sculpt.pill:
+        // Image is 115 px tall with 40 px top/bottom edges and ~110 px ends.
+        return math.max(115 / size.height, 222 / (size.width * 0.96)).clamp(0.25, 12.0);
+      case _Sculpt.panel:
+        final corner = (size.shortestSide * 0.24).clamp(14.0, 64.0);
+        return math.max(72 / corner, 146 / size.shortestSide).clamp(0.5, 12.0);
+    }
+  }
+}
+
+/// Paints a sculpted clay piece, nine-sliced at a size-aware scale.
+class _SculptDecoration extends Decoration {
+  const _SculptDecoration(this.kind, this.asset, this.tint, this.depth);
+
+  final _Sculpt kind;
+  final String asset;
+  final Color tint;
+  final double depth;
+
+  @override
+  BoxPainter createBoxPainter([VoidCallback? onChanged]) => _SculptPainter(this, onChanged);
+
+  @override
+  bool operator ==(Object other) => other is _SculptDecoration && other.kind == kind && other.asset == asset && other.tint == tint && other.depth == depth;
+
+  @override
+  int get hashCode => Object.hash(kind, asset, tint, depth);
+}
+
+class _SculptPainter extends BoxPainter {
+  _SculptPainter(this.d, super.onChanged);
+
+  final _SculptDecoration d;
+  DecorationImagePainter? _painter;
+  double _scale = -1;
+
+  @override
+  void paint(Canvas canvas, Offset offset, ImageConfiguration configuration) {
+    final size = configuration.size;
+    if (size == null || size.isEmpty) return;
+    // Round to a few steps so resizing doesn't make a new painter per frame.
+    final scale = (d.kind.scaleFor(size) * 16).roundToDouble() / 16;
+    if (_painter == null || scale != _scale) {
+      _painter?.dispose();
+      _scale = scale;
+      _painter = DecorationImage(
+        image: AssetImage(d.asset),
+        fit: BoxFit.fill,
+        centerSlice: d.kind.slice,
+        scale: scale,
+        filterQuality: FilterQuality.medium,
+        colorFilter: ColorFilter.mode(d.tint, BlendMode.modulate),
+      ).createPainter(onChanged ?? () {});
+    }
+    final rect = offset & size;
+    // Soft contact shadow shaped like the piece (so no dark square corners).
+    if (d.depth > 0) {
+      final r = switch (d.kind) {
+        _Sculpt.round => size.shortestSide / 2,
+        _Sculpt.pill => size.height / 2,
+        _Sculpt.panel => 72 / scale * 0.8,
+      };
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect.shift(Offset(0, d.depth * 0.55)).deflate(1), Radius.circular(r)),
+        Paint()
+          ..color = Colors.black.withValues(alpha: 0.42)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, d.depth * 0.55),
+      );
+    }
+    _painter!.paint(canvas, rect, null, configuration);
+  }
+
+  @override
+  void dispose() {
+    _painter?.dispose();
+    super.dispose();
+  }
 }
 
 /// Squishes like soft clay when pressed.
