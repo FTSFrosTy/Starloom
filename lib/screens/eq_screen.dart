@@ -132,7 +132,7 @@ class EqScreen extends StatelessWidget {
                       value: s.hats * 100,
                       min: 0,
                       max: 100,
-                      color: Clay.cool,
+                      color: Clay.ghost,
                       seed: 954,
                       unit: '%',
                       onChanged: (v) => eq.setHats(v / 100),
