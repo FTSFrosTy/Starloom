@@ -88,11 +88,56 @@ jobs:
         run: |
           $out = "build/windows/x64/runner/Release"
           Rename-Item "$out/starloom.exe" "Starloom.exe" -ErrorAction SilentlyContinue
-          Compress-Archive -Path "$out/*" -DestinationPath Starloom-Windows.zip
-          Get-Item Starloom-Windows.zip
+          Compress-Archive -Path "$out/*" -DestinationPath Starloom-Windows-portable.zip
+          Get-Item Starloom-Windows-portable.zip
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+          & $iscc /Qp "/DAppVersion=0.5.${{ github.run_number }}" tool/windows/starloom.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Item dist/Starloom-Setup.exe
 
       - uses: actions/upload-artifact@v4
         with:
           name: Starloom-Windows
-          path: Starloom-Windows.zip
+          path: |
+            dist/Starloom-Setup.exe
+            Starloom-Windows-portable.zip
           retention-days: 14
+
+  # Puts the files on the Releases page as plain downloads (no zip-in-a-zip):
+  # https://github.com/FTSFrosTy/Starloom/releases/latest
+  release:
+    name: Publish downloads
+    needs: [ios, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Publish "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          find out -type f -exec mv -n {} out/ \;
+          ls -lh out
+          gh release delete latest --yes --cleanup-tag || true
+          cat > notes.md <<'NOTES'
+          **iPhone:** download `Starloom.ipa`, drag it into Sideloadly, hit Start.
+
+          **PC:** download `Starloom-Setup.exe` and run it. It installs over the old version and keeps your library. (`Starloom-Windows-portable.zip` is the no-install version.)
+          NOTES
+          echo "" >> notes.md
+          echo "Build ${{ github.run_number }} · ${GITHUB_SHA::7}" >> notes.md
+          gh release create latest out/Starloom.ipa out/Starloom-Setup.exe out/Starloom-Windows-portable.zip \
+            --title "Starloom (newest build)" --notes-file notes.md --target "$GITHUB_SHA" --latest
