@@ -7,6 +7,9 @@ FOG = [(0.3, 0.35, 0.5), 10.0, 40.0]  # color, start, end (set per scene)
 
 def reset(res_x, res_y, samples):
     bpy.ops.wm.read_factory_settings(use_empty=True)
+    if '_TPL' in globals():
+        _TPL.clear()
+    ANCHORS.clear() if 'ANCHORS' in globals() else None
     sc = bpy.context.scene
     sc.render.engine = 'CYCLES'
     sc.cycles.device = 'CPU'
@@ -337,3 +340,226 @@ def light(kind, loc, energy, color, rot_deg=(0, 0, 0), size=1.0, spot=None):
 def render(path):
     bpy.context.scene.render.filepath = path
     bpy.ops.render.render(write_still=True)
+
+
+# ---------------------------------------------------------------------------
+# v2: a much more hand-made look
+# ---------------------------------------------------------------------------
+
+def clay2(name, color, color2=None, rough=0.42, bump=0.9, scale=1.0, sss=0.15, haze=1.0, sheen=0.08, smear=True):
+    """Plasticine with a soft waxy shine, blotchy mixed color, deep thumb
+    dents, fingerprint whorls and smeared tool strokes."""
+    m = clay(name, color, color2, rough=rough, bump=bump, scale=scale, sss=sss, haze=haze, prints=True)
+    nt = m.node_tree
+    b = nt.nodes['Principled BSDF']
+    b.inputs['Coat Weight'].default_value = sheen
+    b.inputs['Coat Roughness'].default_value = 0.35
+    b.inputs['Specular IOR Level'].default_value = 0.5
+    if smear:
+        # Tool smears: noise stretched along one axis, added into the bump height.
+        bump_node = [n for n in nt.nodes if n.bl_idname == 'ShaderNodeBump'][0]
+        prev = bump_node.inputs['Height'].links[0].from_socket
+        tc = [n for n in nt.nodes if n.bl_idname == 'ShaderNodeTexCoord'][0]
+        mp = nt.nodes.new('ShaderNodeMapping')
+        mp.inputs['Scale'].default_value = (14 / scale, 1.2 / scale, 3 / scale)
+        mp.inputs['Rotation'].default_value = (0.3, 0.2, 0.7)
+        nt.links.new(tc.outputs['Object'], mp.inputs['Vector'])
+        sm = nt.nodes.new('ShaderNodeTexNoise')
+        sm.inputs['Scale'].default_value = 2.5
+        sm.inputs['Detail'].default_value = 3
+        nt.links.new(mp.outputs['Vector'], sm.inputs['Vector'])
+        add = nt.nodes.new('ShaderNodeMath')
+        add.operation = 'MULTIPLY_ADD'
+        add.inputs[1].default_value = 0.35
+        nt.links.new(sm.outputs['Fac'], add.inputs[0])
+        nt.links.new(prev, add.inputs[2])
+        nt.links.new(add.outputs[0], bump_node.inputs['Height'])
+    return m
+
+
+def deform(o, kind, amount, axis='Z', origin=None):
+    """Bend / taper / twist an object (before its subsurf), pivoting at origin."""
+    md = o.modifiers.new(kind, 'SIMPLE_DEFORM')
+    md.deform_method = kind
+    md.deform_axis = axis
+    if kind in ('BEND', 'TWIST'):
+        md.angle = amount
+    else:
+        md.factor = amount
+    if origin is not None:
+        bpy.ops.object.empty_add(location=origin)
+        e = bpy.context.object
+        md.origin = e
+    # move it before the subsurf so the smoothing follows the bend
+    o.modifiers.move(o.modifiers.find(md.name), 0)
+    return md
+
+
+def instance(src, loc, rot=(0, 0, 0), scale=(1, 1, 1)):
+    """Linked duplicate (shares the mesh): cheap for hundreds of pebbles."""
+    o = bpy.data.objects.new(src.name + '_i', src.data)
+    bpy.context.collection.objects.link(o)
+    o.location = loc
+    o.rotation_euler = rot
+    o.scale = scale
+    return o
+
+
+def bake(o):
+    """Apply an object's modifiers so linked copies cost nothing to evaluate."""
+    bpy.context.view_layer.objects.active = o
+    for ob in bpy.context.selected_objects:
+        ob.select_set(False)
+    o.select_set(True)
+    bpy.ops.object.convert(target='MESH')
+    return o
+
+
+def volume_box(center, size, density=0.02, color=(0.6, 0.7, 1.0), anisotropy=0.45):
+    bpy.ops.mesh.primitive_cube_add(location=center)
+    o = bpy.context.object
+    o.scale = (size[0] / 2, size[1] / 2, size[2] / 2)
+    m = bpy.data.materials.new('haze')
+    m.use_nodes = True
+    nt = m.node_tree
+    for n in list(nt.nodes):
+        nt.nodes.remove(n)
+    out = nt.nodes.new('ShaderNodeOutputMaterial')
+    v = nt.nodes.new('ShaderNodeVolumePrincipled')
+    v.inputs['Density'].default_value = density
+    v.inputs['Color'].default_value = (*color, 1)
+    v.inputs['Anisotropy'].default_value = anisotropy
+    nt.links.new(v.outputs[0], out.inputs['Volume'])
+    o.data.materials.append(m)
+    o.visible_shadow = False
+    bpy.context.scene.cycles.volume_step_rate = 4
+    bpy.context.scene.cycles.volume_max_steps = 128
+    return o
+
+
+ANCHORS = {}
+
+
+def anchor(kind, loc):
+    """Remember a point (window, lamp, chimney…) so the app can animate there."""
+    ANCHORS.setdefault(kind, []).append(tuple(loc))
+
+
+def export_anchors(path):
+    import json
+    from bpy_extras.object_utils import world_to_camera_view
+    from mathutils import Vector
+    sc = bpy.context.scene
+    cam = sc.camera
+    out = {}
+    for kind, pts in ANCHORS.items():
+        lst = []
+        for p in pts:
+            co = world_to_camera_view(sc, cam, Vector(p))
+            if 0 <= co.x <= 1 and 0 <= co.y <= 1 and co.z > 0:
+                # x right, y down, plus depth so the app can size effects
+                lst.append([round(co.x, 4), round(1 - co.y, 4), round(co.z, 2)])
+        out[kind] = lst
+    with open(path, 'w') as f:
+        json.dump(out, f)
+
+
+# ---------------------------------------------------------------------------
+# Fast primitives: shared template meshes + per-object material and scale.
+# bpy.ops calls slow down as the scene grows; these don't.
+# ---------------------------------------------------------------------------
+_TPL = {}
+
+
+def _template(kind, verts=0):
+    key = (kind, verts)
+    if key in _TPL:
+        return _TPL[key]
+    if kind == 'cube':
+        bpy.ops.mesh.primitive_cube_add(size=1)
+    elif kind == 'cone':
+        bpy.ops.mesh.primitive_cone_add(vertices=verts, radius1=1, radius2=0, depth=1)
+    elif kind == 'cyl':
+        bpy.ops.mesh.primitive_cylinder_add(vertices=verts, radius=1, depth=1)
+    elif kind == 'sphere':
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=1, segments=verts, ring_count=max(4, verts // 2))
+        bpy.ops.object.shade_smooth()
+    o = bpy.context.object
+    me = o.data
+    me.materials.append(None)
+    bpy.data.objects.remove(o)
+    _TPL[key] = me
+    return me
+
+
+def _obj(me, loc, rot, scale, mat):
+    o = bpy.data.objects.new('p', me)
+    bpy.context.collection.objects.link(o)
+    o.location = loc
+    o.rotation_euler = rot
+    o.scale = scale
+    o.material_slots[0].link = 'OBJECT'
+    o.material_slots[0].material = mat
+    return o
+
+
+# How a cube's bevel is sized: 'min' gives soft, rounded pieces (Gothic),
+# 'max' keeps crisp slabs like plank fronts and walls.
+BEVEL_REL = 'min'
+
+
+def cube(loc, size, mat, rot=(0, 0, 0), amt=0.04, bevel=0.05, levels=2):
+    o = _obj(_template('cube'), loc, rot, size, mat)
+    if levels or amt or bevel:
+        ref = min(size) if BEVEL_REL == 'min' else max(size)
+        lumpy(o, amt, bevel=bevel / max(0.05, ref), levels=levels)
+    return o
+
+
+def cone(loc, r, depth, mat, verts=4, rot=(0, 0, 0), amt=0.03, levels=1):
+    o = _obj(_template('cone', verts), loc, rot, (r, r, depth), mat)
+    lumpy(o, amt, bevel=0.03, levels=levels)
+    return o
+
+
+def cyl(loc, r, depth, mat, rot=(0, 0, 0), verts=12, amt=0.02, levels=1):
+    o = _obj(_template('cyl', verts), loc, rot, (r, r, depth), mat)
+    lumpy(o, amt, bevel=0.02, levels=levels)
+    return o
+
+
+def sphere(loc, r, mat, scale=(1, 1, 1), amt=0.03, seg=24):
+    o = _obj(_template('sphere', seg), loc, (0, 0, 0), (r * scale[0], r * scale[1], r * scale[2]), mat)
+    if amt:
+        lumpy(o, amt, bevel=0, levels=1)
+    return o
+
+
+def empty(loc):
+    e = bpy.data.objects.new('e', None)
+    bpy.context.collection.objects.link(e)
+    e.location = loc
+    return e
+
+
+def parent_all(objs, pivot, rot):
+    e = empty(pivot)
+    for ob in objs:
+        ob.parent = e
+        ob.location = (ob.location[0] - pivot[0], ob.location[1] - pivot[1], ob.location[2] - pivot[2])
+    e.rotation_euler = rot
+    return e
+
+
+def deform(o, kind, amount, axis='Z', origin=None):
+    md = o.modifiers.new(kind, 'SIMPLE_DEFORM')
+    md.deform_method = kind
+    md.deform_axis = axis
+    if kind in ('BEND', 'TWIST'):
+        md.angle = amount
+    else:
+        md.factor = amount
+    if origin is not None:
+        md.origin = empty(origin)
+    o.modifiers.move(o.modifiers.find(md.name), 0)
+    return md
