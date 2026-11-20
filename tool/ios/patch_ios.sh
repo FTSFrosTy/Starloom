@@ -21,7 +21,11 @@ pb "Add :LSSupportsOpeningDocumentsInPlace bool true"
 
 # Sync with Starloom on your PC over home Wi-Fi.
 pb "Delete :NSLocalNetworkUsageDescription"
-pb "Add :NSLocalNetworkUsageDescription string Starloom connects to Starloom on your PC to sync playlists and songs."
+pb "Add :NSLocalNetworkUsageDescription string Starloom connects to Starloom on your PC and to speakers like Google Home to sync and play your music."
+# Finding Google Cast speakers / TVs with Bonjour.
+pb "Delete :NSBonjourServices"
+pb "Add :NSBonjourServices array"
+pb "Add :NSBonjourServices:0 string _googlecast._tcp"
 pb "Delete :NSAppTransportSecurity"
 pb "Add :NSAppTransportSecurity dict"
 pb "Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true"

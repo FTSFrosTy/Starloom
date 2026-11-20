@@ -8,6 +8,7 @@ import '../services/player_service.dart';
 import '../theme/palette.dart';
 import '../widgets/clay.dart';
 import '../widgets/context_menu.dart';
+import '../widgets/devices.dart';
 import '../widgets/panels.dart';
 import '../widgets/ui_fx.dart';
 import '../widgets/nav.dart';
@@ -79,6 +80,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                                     ),
                                     if (player.playingFrom != null)
                                       Text(player.playingFrom!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Clay.bone, fontWeight: FontWeight.w800, fontSize: 14)),
+                                    const CastBanner(),
                                   ]),
                                 ),
                               ),
@@ -174,6 +176,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                                     builder: (_) => Scaffold(backgroundColor: Clay.night, body: const Backdrop(child: SafeArea(child: EqScreen(showBack: true)))),
                                   )),
                                 ),
+                                const DevicesButton(),
                                 Expanded(child: VolumeSlider(player: player)),
                                 if (!side)
                                   IconButton(

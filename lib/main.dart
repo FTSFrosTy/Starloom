@@ -14,6 +14,7 @@ import 'services/library.dart';
 import 'services/player_service.dart';
 import 'services/playlists.dart';
 import 'services/storage.dart';
+import 'services/connect.dart';
 import 'services/sync.dart';
 import 'services/user_data.dart';
 import 'theme/palette.dart';
@@ -47,6 +48,7 @@ Future<void> main() async {
   player.onSongStarted = user.recordPlay;
   Beat.instance.attach(player.player);
   final sync = SyncService(storage, library, playlists, user, player);
+  final connect = ConnectService(storage, library, player, sync);
   final covers = CoverFinder(storage, library);
 
   runApp(AppScope(
@@ -57,6 +59,7 @@ Future<void> main() async {
     prefs: prefs,
     user: user,
     sync: sync,
+    connect: connect,
     covers: covers,
     child: const StarloomApp(),
   ));
@@ -64,6 +67,7 @@ Future<void> main() async {
   // Loads the cached library instantly, then rescans in the background.
   unawaited(library.init().then((_) async {
     await sync.init();
+    await connect.init();
     await covers.init();
   }));
 }

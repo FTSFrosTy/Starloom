@@ -8,6 +8,7 @@ import 'player_service.dart';
 import 'playlists.dart';
 import 'storage.dart';
 import 'cover_finder.dart';
+import 'connect.dart';
 import 'sync.dart';
 import 'user_data.dart';
 
@@ -95,6 +96,7 @@ class AppScope extends InheritedWidget {
     required this.prefs,
     required this.user,
     required this.sync,
+    required this.connect,
     required this.covers,
     required super.child,
   });
@@ -106,6 +108,7 @@ class AppScope extends InheritedWidget {
   final AppPrefs prefs;
   final UserData user;
   final SyncService sync;
+  final ConnectService connect;
   final CoverFinder covers;
 
   static AppScope of(BuildContext context) => context.getInheritedWidgetOfExactType<AppScope>()!;

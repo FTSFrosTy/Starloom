@@ -72,6 +72,32 @@ class SyncService extends ChangeNotifier {
   bool get isHostPlatform => Platform.isWindows || Platform.isMacOS || Platform.isLinux;
   bool get paired => pcAddress != null && pcCode != null;
 
+  /// PC side: the paired phone, as it last said hello.
+  String? phoneAddress;
+  String? phoneName;
+
+  /// The other Starloom device, and the code both sides share.
+  String? get peerAddress => isHostPlatform ? phoneAddress : pcAddress;
+  String? get sharedCode => isHostPlatform ? (hostEnabled ? code : null) : pcCode;
+
+  /// Extra routes (Cast streaming, device handoff). Return true if handled.
+  /// [authed] says whether the request carried the shared code.
+  Future<bool> Function(HttpRequest req, bool authed)? extraHandler;
+
+  /// Why the little web service is running: 'host' (PC sync), 'cast'
+  /// (a speaker is fetching songs from us), 'peer' (phone, for handoff).
+  final Set<String> _serverUsers = {};
+
+  Future<void> holdServer(String who) async {
+    _serverUsers.add(who);
+    await _startServer();
+  }
+
+  Future<void> releaseServer(String who) async {
+    _serverUsers.remove(who);
+    if (_serverUsers.isEmpty) await _stopServer();
+  }
+
   Future<void> init() async {
     final raw = await _storage.read('sync.json');
     if (raw is Map) {
@@ -80,6 +106,8 @@ class SyncService extends ChangeNotifier {
       pcAddress = raw['pcAddress'] as String?;
       pcCode = raw['pcCode'] as String?;
       lastSyncMs = (raw['lastSyncMs'] as num?)?.toInt();
+      phoneAddress = raw['phoneAddress'] as String?;
+      phoneName = raw['phoneName'] as String?;
     }
     if (code.isEmpty) code = _newCode();
     await _save();
@@ -112,7 +140,18 @@ class SyncService extends ChangeNotifier {
         'pcAddress': pcAddress,
         'pcCode': pcCode,
         'lastSyncMs': lastSyncMs,
+        'phoneAddress': phoneAddress,
+        'phoneName': phoneName,
       });
+
+  /// PC side: remember where the phone is so the PC can hand music to it.
+  Future<void> rememberPhone(String address, String name) async {
+    if (phoneAddress == address && phoneName == name) return;
+    phoneAddress = address;
+    phoneName = name;
+    await _save();
+    notifyListeners();
+  }
 
   static String _newCode() {
     final r = Random.secure();
@@ -210,7 +249,11 @@ class SyncService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> startHost() async {
+  Future<void> startHost() => holdServer('host');
+
+  Future<void> stopHost() => releaseServer('host');
+
+  Future<void> _startServer() async {
     if (_server != null) return;
     try {
       _server = await HttpServer.bind(InternetAddress.anyIPv4, kSyncPort, shared: true);
@@ -228,7 +271,7 @@ class SyncService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> stopHost() async {
+  Future<void> _stopServer() async {
     await _server?.close(force: true);
     _server = null;
     notifyListeners();
@@ -238,7 +281,12 @@ class SyncService extends ChangeNotifier {
     final res = req.response;
     try {
       final given = req.headers.value('x-starloom-code') ?? req.uri.queryParameters['code'];
-      if (given != code) {
+      final authed = given != null &&
+          given.isNotEmpty &&
+          (isHostPlatform ? (hostEnabled && given == code) : (pcCode != null && given == pcCode));
+      final extra = extraHandler;
+      if (extra != null && await extra(req, authed)) return;
+      if (!authed) {
         res.statusCode = HttpStatus.unauthorized;
         await res.close();
         return;
@@ -279,7 +327,11 @@ class SyncService extends ChangeNotifier {
   /// Serves a song file, with byte ranges so streaming can seek.
   Future<void> _sendFile(HttpRequest req, HttpResponse res, String key) async {
     final song = _library.songs.where((s) => keyOf(s) == key).firstOrNull;
-    final file = song == null ? null : File(song.path);
+    await serveFile(req, res, song == null ? null : File(song.path));
+  }
+
+  /// Sends [file] with byte-range support (seeking while streaming).
+  Future<void> serveFile(HttpRequest req, HttpResponse res, File? file, {ContentType? type}) async {
     if (file == null || !await file.exists()) {
       res.statusCode = HttpStatus.notFound;
       await res.close();
@@ -287,7 +339,8 @@ class SyncService extends ChangeNotifier {
     }
     final len = await file.length();
     res.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
-    res.headers.contentType = ContentType.binary;
+    res.headers.set('Access-Control-Allow-Origin', '*');
+    res.headers.contentType = type ?? ContentType.binary;
     final range = req.headers.value(HttpHeaders.rangeHeader);
     var start = 0, end = len - 1;
     if (range != null && range.startsWith('bytes=')) {

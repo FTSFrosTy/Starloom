@@ -10,6 +10,7 @@ import '../theme/palette.dart';
 import '../widgets/clay.dart';
 import '../widgets/context_menu.dart';
 import '../widgets/cover.dart';
+import '../widgets/devices.dart';
 import '../widgets/nav.dart';
 import '../widgets/panels.dart';
 import '../widgets/ui_fx.dart';
@@ -91,13 +92,13 @@ class _HomeShellState extends State<HomeShell> {
     if (ctrl && e.logicalKey == LogicalKeyboardKey.arrowUp) {
       final v = (player.volume + 5).clamp(0.0, 100.0);
       player.setVolume(v);
-      AppScope.of(context).prefs.rememberVolume(v);
+      if (player.output == null) AppScope.of(context).prefs.rememberVolume(v);
       return true;
     }
     if (ctrl && e.logicalKey == LogicalKeyboardKey.arrowDown) {
       final v = (player.volume - 5).clamp(0.0, 100.0);
       player.setVolume(v);
-      AppScope.of(context).prefs.rememberVolume(v);
+      if (player.output == null) AppScope.of(context).prefs.rememberVolume(v);
       return true;
     }
     if (ctrl && e.logicalKey == LogicalKeyboardKey.keyS) {
@@ -284,9 +285,11 @@ class MiniPlayer extends StatelessWidget {
                           children: [
                             Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w700, color: Clay.bone)),
                             Text(song.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Clay.ash)),
+                            const CastBanner(compact: true),
                           ],
                         ),
                       ),
+                      const DevicesButton(size: 22),
                       IconButton(
                         tooltip: liked ? 'Unlike' : 'Like',
                         icon: Icon(liked ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: liked ? Clay.rose : Clay.bone, size: 24),
@@ -388,6 +391,7 @@ class PlayerBar extends StatelessWidget {
                                   children: [
                                     Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Clay.bone, fontWeight: FontWeight.w700, fontSize: 15)),
                                     Text(song.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Clay.ash, fontSize: 12.5)),
+                                    const CastBanner(compact: true),
                                   ],
                                 ),
                               ),
@@ -447,6 +451,7 @@ class PlayerBar extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         ..._panelToggles(context),
+                        const DevicesButton(size: 21),
                         _barIcon(Icons.open_in_full_rounded, 'Full screen player', () => openNowPlaying(context), size: 19),
                         const SizedBox(width: 4),
                         Flexible(child: SizedBox(width: 160, child: VolumeSlider(player: player))),
@@ -566,7 +571,7 @@ class VolumeSlider extends StatelessWidget {
         onPressed: () {
           final next = v == 0 ? (prefs.volume > 0 ? prefs.volume : 70.0) : 0.0;
           player.setVolume(next);
-          if (next > 0) prefs.rememberVolume(next);
+          if (next > 0 && player.output == null) prefs.rememberVolume(next);
         },
       ),
       Expanded(
@@ -576,7 +581,9 @@ class VolumeSlider extends StatelessWidget {
           color: Clay.ghost,
           seed: 71,
           onChanged: (x) => player.setVolume(x * 100),
-          onChangeEnd: (x) => prefs.rememberVolume(x * 100),
+          onChangeEnd: (x) {
+            if (player.output == null) prefs.rememberVolume(x * 100);
+          },
         ),
       ),
     ]);

@@ -9,6 +9,8 @@ public class StarloomFoldersPlugin: NSObject, FlutterPlugin, UIDocumentPickerDel
   private var pendingResult: FlutterResult?
   /// URLs we started accessing. Held for the whole app session on purpose.
   private var openURLs: [URL] = []
+  /// Google Cast searches in progress (kept alive until they finish).
+  private var browsers: [CastBrowser] = []
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "starloom/folders", binaryMessenger: registrar.messenger())
@@ -20,6 +22,15 @@ public class StarloomFoldersPlugin: NSObject, FlutterPlugin, UIDocumentPickerDel
     switch call.method {
     case "pick":
       pick(result: result)
+    case "browseCast":
+      let args = call.arguments as? [String: Any]
+      let seconds = (args?["seconds"] as? Double) ?? 3.0
+      let browser = CastBrowser(seconds: seconds) { [weak self] found in
+        self?.browsers.removeAll { $0.done }
+        result(found)
+      }
+      browsers.append(browser)
+      browser.start()
     case "restore":
       guard let args = call.arguments as? [String: Any],
             let b64 = args["bookmark"] as? String,
@@ -101,5 +112,71 @@ public class StarloomFoldersPlugin: NSObject, FlutterPlugin, UIDocumentPickerDel
       top = presented
     }
     return top
+  }
+}
+
+
+/// Finds Google Cast speakers and TVs (Google Home, Nest, Chromecast) on the
+/// Wi-Fi with Bonjour. iOS doesn't let apps send raw multicast without a
+/// special Apple entitlement, so discovery has to happen here; the actual
+/// Cast connection is plain TCP and is done in Dart.
+final class CastBrowser: NSObject, NetServiceBrowserDelegate, NetServiceDelegate {
+  private let browser = NetServiceBrowser()
+  private var services: [NetService] = []
+  private var found: [String: [String: Any]] = [:]
+  private let seconds: Double
+  private let finish: ([[String: Any]]) -> Void
+  private(set) var done = false
+
+  init(seconds: Double, finish: @escaping ([[String: Any]]) -> Void) {
+    self.seconds = seconds
+    self.finish = finish
+  }
+
+  func start() {
+    browser.delegate = self
+    browser.searchForServices(ofType: "_googlecast._tcp.", inDomain: "local.")
+    DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in self?.stop() }
+  }
+
+  private func stop() {
+    if done { return }
+    done = true
+    browser.stop()
+    for s in services { s.stop() }
+    finish(Array(found.values))
+  }
+
+  func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
+    services.append(service)
+    service.delegate = self
+    service.resolve(withTimeout: max(1.0, seconds - 0.5))
+  }
+
+  func netServiceDidResolveAddress(_ sender: NetService) {
+    guard let host = CastBrowser.ipv4(sender.addresses ?? []) else { return }
+    var name = sender.name
+    var model = ""
+    if let txt = sender.txtRecordData() {
+      let dict = NetService.dictionary(fromTXTRecord: txt)
+      if let fn = dict["fn"], let s = String(data: fn, encoding: .utf8) { name = s }
+      if let md = dict["md"], let s = String(data: md, encoding: .utf8) { model = s }
+    }
+    found[sender.name] = ["name": name, "host": host, "port": sender.port, "model": model]
+  }
+
+  private static func ipv4(_ addresses: [Data]) -> String? {
+    for data in addresses {
+      var out: String?
+      data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+        guard let sa = raw.baseAddress?.assumingMemoryBound(to: sockaddr.self), sa.pointee.sa_family == sa_family_t(AF_INET) else { return }
+        var buf = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+        if getnameinfo(sa, socklen_t(data.count), &buf, socklen_t(buf.count), nil, 0, NI_NUMERICHOST) == 0 {
+          out = String(cString: buf)
+        }
+      }
+      if let o = out { return o }
+    }
+    return nil
   }
 }
