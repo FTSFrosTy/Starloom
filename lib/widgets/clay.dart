@@ -19,7 +19,8 @@ class StopMotion implements Listenable {
   Timer? _timer;
   int frame = 0;
   bool _enabled = true;
-  bool _foreground = true;
+  AppLifecycleState _state = AppLifecycleState.resumed;
+  bool _keepWhenUnfocused = false;
 
   bool get enabled => _enabled;
 
@@ -28,10 +29,21 @@ class StopMotion implements Listenable {
     _sync();
   }
 
-  set foreground(bool v) {
-    _foreground = v;
+  /// The app's lifecycle: animations run while it's in front, pause when
+  /// it's hidden or minimized.
+  set lifecycle(AppLifecycleState v) {
+    _state = v;
     _sync();
   }
+
+  /// PC: keep animating when the window is visible but not focused
+  /// (another window is active). Off by default.
+  set keepWhenUnfocused(bool v) {
+    _keepWhenUnfocused = v;
+    _sync();
+  }
+
+  bool get _visible => _state == AppLifecycleState.resumed || (_keepWhenUnfocused && _state == AppLifecycleState.inactive);
 
   @override
   void addListener(VoidCallback listener) {
@@ -46,7 +58,7 @@ class StopMotion implements Listenable {
   }
 
   void _sync() {
-    final shouldRun = _enabled && _foreground && _listeners.isNotEmpty;
+    final shouldRun = _enabled && _visible && _listeners.isNotEmpty;
     if (shouldRun && _timer == null) {
       _timer = Timer.periodic(const Duration(microseconds: 83333), (_) {
         frame++;

@@ -191,6 +191,18 @@ class SettingsScreen extends StatelessWidget {
                   value: scope.prefs.reduceMotion,
                   onChanged: scope.prefs.setReduceMotion,
                 ),
+                if (Platform.isWindows || Platform.isMacOS || Platform.isLinux)
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    activeThumbColor: Clay.candle,
+                    title: Text('Animate in the background', style: TextStyle(color: Clay.bone)),
+                    subtitle: Text(
+                      'Keep everything moving when another window is in front. Off pauses the wobble to save power. (Minimized always pauses.)',
+                      style: TextStyle(color: Clay.ash, fontSize: 12.5),
+                    ),
+                    value: scope.prefs.animateUnfocused,
+                    onChanged: scope.prefs.setAnimateUnfocused,
+                  ),
               ],
             ),
             _Section(

@@ -130,7 +130,7 @@ class _StarloomAppState extends State<StarloomApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // No animation work at all while the app is in the background; the
     // music keeps playing on its own.
-    StopMotion.instance.foreground = state == AppLifecycleState.resumed;
+    StopMotion.instance.lifecycle = state;
   }
 
   @override

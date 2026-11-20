@@ -23,6 +23,9 @@ class AppPrefs extends ChangeNotifier {
   double volume = 100;
   bool haptics = true;
 
+  /// PC: keep the animations going when another window is in front.
+  bool animateUnfocused = false;
+
   StarTheme get theme => kThemes.firstWhere((t) => t.id == themeId, orElse: () => kThemes.first);
 
   Future<void> init() async {
@@ -33,20 +36,31 @@ class AppPrefs extends ChangeNotifier {
       themeId = (raw['theme'] as String?) ?? themeId;
       volume = (raw['volume'] as num?)?.toDouble() ?? 100;
       haptics = (raw['haptics'] as bool?) ?? true;
+      animateUnfocused = (raw['animateUnfocused'] as bool?) ?? false;
     }
     StopMotion.instance.enabled = !reduceMotion;
+    StopMotion.instance.keepWhenUnfocused = animateUnfocused;
     Clay.current = theme;
   }
 
+  Map<String, Object?> _json() => {
+        'reduceMotion': reduceMotion,
+        'sort': sort.name,
+        'theme': themeId,
+        'volume': volume,
+        'haptics': haptics,
+        'animateUnfocused': animateUnfocused,
+      };
+
   Future<void> _save() {
     notifyListeners();
-    return _storage.write('prefs.json', {
-      'reduceMotion': reduceMotion,
-      'sort': sort.name,
-      'theme': themeId,
-      'volume': volume,
-      'haptics': haptics,
-    });
+    return _storage.write('prefs.json', _json());
+  }
+
+  Future<void> setAnimateUnfocused(bool v) {
+    animateUnfocused = v;
+    StopMotion.instance.keepWhenUnfocused = v;
+    return _save();
   }
 
   Future<void> setReduceMotion(bool v) {
@@ -74,13 +88,7 @@ class AppPrefs extends ChangeNotifier {
   /// Saved quietly (no rebuild) so dragging the volume stays smooth.
   void rememberVolume(double v) {
     volume = v;
-    _storage.write('prefs.json', {
-      'reduceMotion': reduceMotion,
-      'sort': sort.name,
-      'theme': themeId,
-      'volume': volume,
-      'haptics': haptics,
-    });
+    _storage.write('prefs.json', _json());
   }
 }
 
