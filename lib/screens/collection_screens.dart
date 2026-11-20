@@ -45,6 +45,7 @@ class CollectionView extends StatelessWidget {
     final scope = AppScope.of(context);
     final wide = isWide(context);
     final canPop = Navigator.of(context).canPop();
+    final menuArt = RightClick(onMenu: (at) => songsMenu(context, at, songs, title: title), child: art);
     final info = Column(
       crossAxisAlignment: wide ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
@@ -63,13 +64,13 @@ class CollectionView extends StatelessWidget {
               label: 'Play',
               icon: Icons.play_arrow_rounded,
               color: Clay.pumpkin,
-              onTap: songs.isEmpty ? null : () => scope.player.playSongs(songs, 0),
+              onTap: songs.isEmpty ? null : () => scope.player.playSongs(songs, 0, from: title),
             ),
             ClayButton(
               label: 'Shuffle',
               icon: Icons.shuffle_rounded,
               seed: 8,
-              onTap: songs.isEmpty ? null : () => scope.player.playSongs(songs, 0, shuffled: true),
+              onTap: songs.isEmpty ? null : () => scope.player.playSongs(songs, 0, shuffled: true, from: title),
             ),
             ...actions,
           ],
@@ -79,8 +80,8 @@ class CollectionView extends StatelessWidget {
     final header = Padding(
       padding: EdgeInsets.fromLTRB(wide ? 28 : 20, canPop ? 0 : 16, 20, 14),
       child: wide
-          ? Row(crossAxisAlignment: CrossAxisAlignment.end, children: [art, const SizedBox(width: 26), Expanded(child: info)])
-          : Column(children: [art, const SizedBox(height: 16), info]),
+          ? Row(crossAxisAlignment: CrossAxisAlignment.end, children: [menuArt, const SizedBox(width: 26), Expanded(child: info)])
+          : Column(children: [menuArt, const SizedBox(height: 16), info]),
     );
 
     return CustomScrollView(
@@ -111,7 +112,7 @@ class CollectionView extends StatelessWidget {
             (context, i) => SongTile(
               song: songs[i],
               leadingNumber: numbered ? (songs[i].trackNo > 0 ? songs[i].trackNo : i + 1) : null,
-              onTap: () => scope.player.playSongs(songs, i),
+              onTap: () => scope.player.playSongs(songs, i, from: title),
               onRemove: onRemove == null ? null : () => onRemove!(i),
             ),
             childCount: songs.length,

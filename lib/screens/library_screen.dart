@@ -6,6 +6,7 @@ import '../services/app_scope.dart';
 import '../services/library.dart';
 import '../theme/palette.dart';
 import '../widgets/clay.dart';
+import '../widgets/context_menu.dart';
 import '../widgets/cover.dart';
 import '../widgets/nav.dart';
 import '../widgets/song_tile.dart';
@@ -67,6 +68,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                 child: TextField(
                   controller: _search,
+                  focusNode: Nav.searchFocus,
                   onChanged: (v) => setState(() => _query = v),
                   style: TextStyle(color: Clay.bone),
                   textInputAction: TextInputAction.search,
@@ -124,7 +126,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       child: ListView.builder(
         itemExtent: kSongRowHeight,
         itemCount: songs.length,
-        itemBuilder: (context, i) => SongTile(song: songs[i], onTap: () => player.playSongs(songs, i)),
+        itemBuilder: (context, i) => SongTile(song: songs[i], onTap: () => player.playSongs(songs, i, from: 'Your library')),
       ),
     );
   }
@@ -154,7 +156,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       itemCount: artists.length,
       itemBuilder: (context, i) {
         final a = artists[i];
-        return ListTile(
+        return RightClick(
+          onMenu: (at) => songsMenu(context, at, a.songs, title: a.name),
+          child: ListTile(
           onTap: () => Nav.push(ArtistScreen(name: a.name)),
           leading: ClipOval(child: Cover(artKey: a.artKey, seedText: a.name, size: 50, radius: 25)),
           title: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Clay.bone, fontWeight: FontWeight.w600)),
@@ -163,6 +167,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             style: TextStyle(color: Clay.ash, fontSize: 12.5),
           ),
           trailing: Icon(Icons.chevron_right_rounded, color: Clay.ash),
+        ),
         );
       },
     );

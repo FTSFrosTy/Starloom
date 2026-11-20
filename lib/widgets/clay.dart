@@ -325,6 +325,7 @@ class Squish extends StatefulWidget {
 class _SquishState extends State<Squish> with SingleTickerProviderStateMixin {
   // Unbounded so the elastic release can overshoot into a little jiggle.
   late final AnimationController _c = AnimationController.unbounded(vsync: this);
+  bool _hover = false;
 
   @override
   void dispose() {
@@ -344,7 +345,7 @@ class _SquishState extends State<Squish> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final active = widget.enabled && (widget.onTap != null || widget.onLongPress != null);
-    return GestureDetector(
+    final gesture = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: active ? (_) => _down() : null,
       onTapUp: active ? (_) => _up() : null,
@@ -362,6 +363,24 @@ class _SquishState extends State<Squish> with SingleTickerProviderStateMixin {
           );
         },
         child: Opacity(opacity: widget.enabled ? 1 : 0.4, child: widget.child),
+      ),
+    );
+    if (!active) return gesture;
+    // PC: lift and tilt a touch under the mouse, like picking up clay.
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: AnimatedScale(
+        scale: _hover ? 1.045 : 1,
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOutBack,
+        child: AnimatedRotation(
+          turns: _hover ? 0.004 : 0,
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutBack,
+          child: gesture,
+        ),
       ),
     );
   }
@@ -663,19 +682,94 @@ class _ClaySliderPainter extends CustomPainter {
 }
 
 /// Big title in the hand-cut display face.
-class ClayTitle extends StatelessWidget {
+/// Big hand-made title: the letters drop in one by one when the page
+/// opens, then "boil" (jiggle a hair on twos) like hand-placed clay type.
+class ClayTitle extends StatefulWidget {
   const ClayTitle(this.text, {super.key, this.size = 34});
 
   final String text;
   final double size;
 
   @override
+  State<ClayTitle> createState() => _ClayTitleState();
+}
+
+class _ClayTitleState extends State<ClayTitle> with SingleTickerProviderStateMixin {
+  late final AnimationController _in = AnimationController(vsync: this, duration: const Duration(milliseconds: 520));
+
+  @override
+  void initState() {
+    super.initState();
+    if (StopMotion.instance.enabled) {
+      _in.forward();
+    } else {
+      _in.value = 1;
+    }
+  }
+
+  @override
+  void didUpdateWidget(ClayTitle old) {
+    super.didUpdateWidget(old);
+    if (old.text != widget.text && StopMotion.instance.enabled) _in.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _in.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: Clay.title(size).copyWith(
-        shadows: const [Shadow(color: Colors.black54, offset: Offset(0, 3), blurRadius: 6)],
-      ),
+    final style = Clay.title(widget.size).copyWith(
+      shadows: const [Shadow(color: Colors.black54, offset: Offset(0, 3), blurRadius: 6)],
+    );
+    // Very long titles just get the plain (still styled) text.
+    if (widget.text.length > 40) return Text(widget.text, style: style);
+    final chars = widget.text.characters.toList();
+    final seed = widget.text.hashCode;
+    return ListenableBuilder(
+      listenable: Listenable.merge([StopMotion.instance, _in]),
+      builder: (context, _) {
+        final f = StopMotion.instance.frame ~/ 2; // "on twos"
+        final t = _in.value;
+        final spans = <InlineSpan>[];
+        var word = <Widget>[];
+        void flush() {
+          if (word.isEmpty) return;
+          spans.add(WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: word),
+          ));
+          word = <Widget>[];
+        }
+
+        for (var i = 0; i < chars.length; i++) {
+          final c = chars[i];
+          if (c == ' ') {
+            flush();
+            spans.add(TextSpan(text: ' ', style: style));
+            continue;
+          }
+          // Staggered drop-in with a little squash on landing.
+          final local = ((t * (chars.length * 0.35 + 1)) - i * 0.35).clamp(0.0, 1.0);
+          final drop = Curves.easeOutBack.transform(local);
+          final dy = (1 - drop) * -widget.size * 0.5 + clayNoise(seed, i * 7 + f, 1) * 0.9;
+          final dx = clayNoise(seed, i * 7 + f, 2) * 0.7;
+          final rot = clayNoise(seed, i * 13 + f, 3) * 0.035;
+          word.add(Opacity(
+            opacity: local,
+            child: Transform(
+              alignment: Alignment.bottomCenter,
+              transform: Matrix4.translationValues(dx, dy, 0)..rotateZ(rot),
+              child: Text(c, style: style),
+            ),
+          ));
+        }
+        flush();
+        return Text.rich(TextSpan(children: spans));
+      },
     );
   }
 }

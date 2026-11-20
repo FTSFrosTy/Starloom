@@ -4,6 +4,7 @@ import '../models/models.dart';
 import '../services/app_scope.dart';
 import '../theme/palette.dart';
 import '../widgets/clay.dart';
+import '../widgets/context_menu.dart';
 import '../widgets/cover.dart';
 import '../widgets/nav.dart';
 import 'collection_screens.dart';
@@ -76,13 +77,16 @@ class HomeScreen extends StatelessWidget {
 
         // Quick tiles: Liked, Recently played, Most played, then recent stuff.
         final tiles = <_QuickTile>[
-          _QuickTile('Liked Songs', null, Icons.favorite_rounded, () => Nav.push(const LikedScreen())),
+          _QuickTile('Liked Songs', null, Icons.favorite_rounded, () => Nav.push(const LikedScreen()),
+              menu: (ctx, at) => songsMenu(ctx, at, liked, title: 'Liked Songs')),
           if (recentSongs.isNotEmpty)
             _QuickTile('Recently played', recentSongs.first.artKey, Icons.history_rounded,
-                () => Nav.push(SongListScreen(title: 'Recently played', songs: recentSongs, icon: Icons.history_rounded))),
+                () => Nav.push(SongListScreen(title: 'Recently played', songs: recentSongs, icon: Icons.history_rounded)),
+                menu: (ctx, at) => songsMenu(ctx, at, recentSongs, title: 'Recently played')),
           if (topSongs.isNotEmpty)
             _QuickTile('Most played', topSongs.first.artKey, Icons.local_fire_department_rounded,
-                () => Nav.push(SongListScreen(title: 'Most played', songs: topSongs, icon: Icons.local_fire_department_rounded))),
+                () => Nav.push(SongListScreen(title: 'Most played', songs: topSongs, icon: Icons.local_fire_department_rounded)),
+                menu: (ctx, at) => songsMenu(ctx, at, topSongs, title: 'Most played')),
           for (final key in user.recentCollections) ?_tileFor(context, key),
           for (final pl in scope.playlists.playlists) _playlistTile(context, pl),
         ];
@@ -107,7 +111,7 @@ class HomeScreen extends StatelessWidget {
                   color: Clay.pumpkin,
                   seed: 31,
                   boil: true,
-                  onTap: () => scope.player.playSongs(lib.songs, 0, shuffled: true),
+                  onTap: () => scope.player.playSongs(lib.songs, 0, shuffled: true, from: 'Your library'),
                 ),
               ],
             ),
@@ -141,11 +145,17 @@ class HomeScreen extends StatelessWidget {
     }
     if (key.startsWith('album:')) {
       final a = scope.library.albumByKey(key.substring(6));
-      return a == null ? null : _QuickTile(a.name, a.artKey, Icons.album_rounded, () => Nav.push(AlbumScreen(albumKey: a.key)));
+      return a == null
+          ? null
+          : _QuickTile(a.name, a.artKey, Icons.album_rounded, () => Nav.push(AlbumScreen(albumKey: a.key)),
+              menu: (ctx, at) => songsMenu(ctx, at, a.songs, albumArtist: a.artist, title: a.name));
     }
     if (key.startsWith('artist:')) {
       final a = scope.library.artistByName(key.substring(7));
-      return a == null ? null : _QuickTile(a.name, a.artKey, Icons.person_rounded, () => Nav.push(ArtistScreen(name: a.name)));
+      return a == null
+          ? null
+          : _QuickTile(a.name, a.artKey, Icons.person_rounded, () => Nav.push(ArtistScreen(name: a.name)),
+              menu: (ctx, at) => songsMenu(ctx, at, a.songs, title: a.name));
     }
     return null;
   }
@@ -153,12 +163,14 @@ class HomeScreen extends StatelessWidget {
   _QuickTile _playlistTile(BuildContext context, Playlist pl) {
     final lib = AppScope.of(context).library;
     final art = pl.songIds.map(lib.byId).map((s) => s?.artKey).whereType<String>().firstOrNull;
-    return _QuickTile(pl.name, art, Icons.queue_music_rounded, () => Nav.push(PlaylistScreen(playlistId: pl.id)));
+    return _QuickTile(pl.name, art, Icons.queue_music_rounded, () => Nav.push(PlaylistScreen(playlistId: pl.id)),
+        menu: (ctx, at) => playlistMenu(ctx, at, pl));
   }
 }
 
 class _QuickTile {
-  _QuickTile(this.title, this.artKey, this.icon, this.onTap);
+  _QuickTile(this.title, this.artKey, this.icon, this.onTap, {this.menu});
+  final void Function(BuildContext, Offset)? menu;
   final String title;
   final String? artKey;
   final IconData icon;
@@ -172,7 +184,10 @@ class _QuickTileView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Squish(
+    final menu = tile.menu;
+    return RightClick(
+      onMenu: (at) => menu?.call(context, at),
+      child: Squish(
       onTap: tile.onTap,
       child: ClayBox(
         color: Clay.bruise,
@@ -189,6 +204,7 @@ class _QuickTileView extends StatelessWidget {
             child: Text(tile.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: Clay.bone, fontWeight: FontWeight.w700, fontSize: 13.5)),
           ),
         ]),
+      ),
       ),
     );
   }
@@ -219,8 +235,10 @@ class _SongRow extends StatelessWidget {
               final s = songs[i];
               return SizedBox(
                 width: 130,
-                child: Squish(
-                  onTap: () => player.playSongs(songs, i),
+                child: RightClick(
+                  onMenu: (at) => songMenu(context, at, s),
+                  child: Squish(
+                  onTap: () => player.playSongs(songs, i, from: title),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -230,6 +248,7 @@ class _SongRow extends StatelessWidget {
                       Text(s.artist.isEmpty ? 'Unknown artist' : s.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Clay.ash, fontSize: 12)),
                     ],
                   ),
+                ),
                 ),
               );
             },

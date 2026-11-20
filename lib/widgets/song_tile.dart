@@ -12,7 +12,9 @@ const double kSongRowHeight = 64;
 
 /// One song row: cover, title, artist, liked heart, length, menu.
 /// Swipe right to add to the queue. Fixed height so long lists stay smooth.
-class SongTile extends StatelessWidget {
+/// On wide windows it becomes a Spotify-style table row: album column,
+/// hover highlight, play button over the cover, click-to-like heart.
+class SongTile extends StatefulWidget {
   const SongTile({super.key, required this.song, required this.onTap, this.onRemove, this.leadingNumber});
 
   final Song song;
@@ -25,26 +27,57 @@ class SongTile extends StatelessWidget {
   final int? leadingNumber;
 
   @override
+  State<SongTile> createState() => _SongTileState();
+}
+
+class _SongTileState extends State<SongTile> {
+  bool _hover = false;
+
+  @override
   Widget build(BuildContext context) {
     final scope = AppScope.of(context);
-    final row = SizedBox(
+    final song = widget.song;
+    final onRemove = widget.onRemove;
+    final leadingNumber = widget.leadingNumber;
+    final row = MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: SizedBox(
       height: kSongRowHeight,
-      child: InkWell(
-        onTap: onTap,
+      child: Material(
+        color: _hover ? Clay.bone.withValues(alpha: 0.07) : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: widget.onTap,
         onLongPress: () => showSongActions(context, song, onRemove: onRemove),
-        child: Padding(
+        child: LayoutBuilder(builder: (context, box) {
+          final table = box.maxWidth >= 700;
+          return Padding(
           padding: const EdgeInsets.only(left: 16, right: 4),
           child: Row(
             children: [
               if (leadingNumber != null)
                 SizedBox(
                   width: 34,
-                  child: Text('$leadingNumber', textAlign: TextAlign.center, style: TextStyle(color: Clay.ash, fontSize: 14)),
+                  child: _hover
+                      ? Icon(Icons.play_arrow_rounded, color: Clay.bone, size: 22)
+                      : Text('$leadingNumber', textAlign: TextAlign.center, style: TextStyle(color: Clay.ash, fontSize: 14)),
                 )
               else
-                Cover(artKey: song.artKey, seedText: song.album.isNotEmpty ? song.album : song.artist.isNotEmpty ? song.artist : song.title, size: 46),
+                Stack(alignment: Alignment.center, children: [
+                  Cover(artKey: song.artKey, seedText: song.album.isNotEmpty ? song.album : song.artist.isNotEmpty ? song.artist : song.title, size: 46),
+                  if (_hover)
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(8)),
+                      child: Icon(Icons.play_arrow_rounded, color: Clay.bone, size: 26),
+                    ),
+                ]),
               const SizedBox(width: 14),
               Expanded(
+                flex: 3,
                 child: ValueListenableBuilder<String?>(
                   valueListenable: scope.player.currentId,
                   builder: (context, currentId, _) {
@@ -71,32 +104,71 @@ class SongTile extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 2),
-                        Text(song.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Clay.ash, fontSize: 13)),
+                        Text(table ? song.artist : song.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Clay.ash, fontSize: 13)),
                       ],
                     );
                   },
                 ),
               ),
+              if (table)
+                Expanded(
+                  flex: 2,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 12),
+                    child: song.album.isEmpty
+                        ? const SizedBox.shrink()
+                        : Align(
+                            alignment: Alignment.centerLeft,
+                            child: GestureDetector(
+                              onTap: () => Nav.push(AlbumScreen(albumKey: song.albumKey)),
+                              child: Text(
+                                song.album,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: _hover ? Clay.bone : Clay.ash, fontSize: 13.5, decoration: _hover ? TextDecoration.underline : null, decorationColor: Clay.ash),
+                              ),
+                            ),
+                          ),
+                  ),
+                ),
               ListenableBuilder(
                 listenable: scope.user,
-                builder: (context, _) => scope.user.isLiked(song.id)
-                    ? Padding(padding: const EdgeInsets.only(left: 6), child: Icon(Icons.favorite_rounded, size: 16, color: Clay.rose))
-                    : const SizedBox.shrink(),
+                builder: (context, _) {
+                  final liked = scope.user.isLiked(song.id);
+                  if (table && (liked || _hover)) {
+                    return IconButton(
+                      tooltip: liked ? 'Remove from Liked Songs' : 'Save to Liked Songs',
+                      visualDensity: VisualDensity.compact,
+                      icon: Icon(liked ? Icons.favorite_rounded : Icons.favorite_border_rounded, size: 18, color: liked ? Clay.rose : Clay.ash),
+                      onPressed: () => scope.user.toggleLike(song.id),
+                    );
+                  }
+                  if (table) return const SizedBox(width: 40);
+                  return liked
+                      ? Padding(padding: const EdgeInsets.only(left: 6), child: Icon(Icons.favorite_rounded, size: 16, color: Clay.rose))
+                      : const SizedBox.shrink();
+                },
               ),
               if (song.durationMs > 0)
-                Padding(
-                  padding: const EdgeInsets.only(left: 10),
-                  child: Text(formatDuration(Duration(milliseconds: song.durationMs)), style: TextStyle(color: Clay.ash, fontSize: 12.5)),
+                SizedBox(
+                  width: table ? 52 : null,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 10),
+                    child: Text(formatDuration(Duration(milliseconds: song.durationMs)), style: TextStyle(color: Clay.ash, fontSize: 12.5)),
+                  ),
                 ),
               IconButton(
-                icon: Icon(Icons.more_horiz_rounded, color: Clay.ash),
+                icon: Icon(Icons.more_horiz_rounded, color: _hover || !table ? Clay.ash : Colors.transparent),
                 tooltip: 'More',
                 onPressed: () => showSongActions(context, song, onRemove: onRemove),
               ),
             ],
           ),
-        ),
+        );
+        }),
       ),
+      ),
+    ),
     );
 
     // Swipe right to queue, like Spotify. The row snaps back.

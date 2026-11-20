@@ -88,14 +88,8 @@ class PlaylistsScreen extends StatelessWidget {
     final lib = AppScope.of(context).library;
     final songs = [for (final id in pl.songIds) ?lib.byId(id)];
     final missing = pl.missing.where((m) => !m.streaming).length;
-    final store = AppScope.of(context).playlists;
     return _PlaylistCard(
-      onMenu: (at) => songsMenu(context, at, songs,
-          onRename: () async {
-            final name = await promptText(context, title: 'Rename', initial: pl.name);
-            if (name != null) await store.rename(pl, name);
-          },
-          onDelete: () => store.delete(pl)),
+      onMenu: (at) => playlistMenu(context, at, pl),
       title: pl.name,
       subtitle: [songCount(songs.length), if (missing > 0) '$missing not found'].join('  ·  '),
       art: Mosaic(artKeys: [for (final s in songs) ?s.artKey], seedText: pl.id, size: 62),

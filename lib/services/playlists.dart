@@ -91,6 +91,11 @@ class PlaylistStore extends ChangeNotifier {
     await _save();
   }
 
+  Future<void> togglePin(Playlist pl) async {
+    pl.pinned = !pl.pinned;
+    await _save(pl);
+  }
+
   Future<void> addSong(Playlist pl, String songId) async {
     pl.songIds.add(songId);
     await _save(pl);

@@ -302,7 +302,7 @@ class _PcLibraryScreenState extends State<PcLibraryScreen> {
               itemBuilder: (context, i) {
                 final s = list[i];
                 return ListTile(
-                  onTap: () => scope.player.playSongs(scope.sync.streamable(list), i),
+                  onTap: () => scope.player.playSongs(scope.sync.streamable(list), i, from: 'PC library'),
                   leading: Pebble(seedText: s.album.isNotEmpty ? s.album : s.title, size: 42),
                   title: Text(s.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Clay.bone, fontWeight: FontWeight.w600)),
                   subtitle: Text(

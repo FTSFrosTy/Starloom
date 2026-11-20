@@ -13,6 +13,9 @@ class Nav {
   /// Root navigator (full-screen pages like Now Playing).
   static final GlobalKey<NavigatorState> root = GlobalKey<NavigatorState>();
 
+  /// The Library search box, so Ctrl+F can jump straight into it.
+  static final FocusNode searchFocus = FocusNode(debugLabel: 'library search');
+
   static NavigatorState? get _current => tabs[currentTab].currentState;
 
   /// Pushed pages get their own copy of the scenery so the page underneath

@@ -30,6 +30,9 @@ class PlayerService extends ChangeNotifier {
   /// ("Add to queue" / "Play next"). They play before the rest of the
   /// album/playlist, in the order they were added.
   int queuedAhead = 0;
+
+  /// Where the current queue came from ("Trip 3", "Liked Songs"…).
+  String? playingFrom;
   int index = -1;
   bool playing = false;
   bool shuffle = false;
@@ -154,8 +157,9 @@ class PlayerService extends ChangeNotifier {
       );
 
   /// Replace the queue with [songs] and start at [start].
-  Future<void> playSongs(List<Song> songs, int start, {bool shuffled = false}) async {
+  Future<void> playSongs(List<Song> songs, int start, {bool shuffled = false, String? from}) async {
     if (songs.isEmpty) return;
+    playingFrom = from;
     var list = songs;
     var at = start.clamp(0, songs.length - 1);
     if (shuffled) {

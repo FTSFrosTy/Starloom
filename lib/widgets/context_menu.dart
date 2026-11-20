@@ -33,7 +33,7 @@ Future<void> _menu(BuildContext context, Offset at, List<(IconData, String, Void
   if (choice != null) items[choice].$3();
 }
 
-Future<void> songMenu(BuildContext context, Offset at, Song song, {VoidCallback? onRemove}) {
+Future<void> songMenu(BuildContext context, Offset at, Song song, {VoidCallback? onRemove, VoidCallback? onRemoveFromQueue}) {
   final scope = AppScope.of(context);
   final liked = scope.user.isLiked(song.id);
   return _menu(context, at, [
@@ -45,14 +45,16 @@ Future<void> songMenu(BuildContext context, Offset at, Song song, {VoidCallback?
     if (song.album.isNotEmpty) (Icons.album_rounded, 'Go to album', () => Nav.push(AlbumScreen(albumKey: song.albumKey)), false),
     if (song.artist.isNotEmpty) (Icons.person_rounded, 'Go to artist', () => Nav.push(ArtistScreen(name: song.artist)), false),
     if (onRemove != null) (Icons.remove_circle_outline_rounded, 'Remove from this playlist', onRemove, true),
+    if (onRemoveFromQueue != null) (Icons.playlist_remove_rounded, 'Remove from queue', onRemoveFromQueue, true),
   ]);
 }
 
-Future<void> songsMenu(BuildContext context, Offset at, List<Song> songs, {String? albumArtist, VoidCallback? onRename, VoidCallback? onDelete}) {
+Future<void> songsMenu(BuildContext context, Offset at, List<Song> songs,
+    {String? albumArtist, String? title, VoidCallback? onRename, VoidCallback? onDelete, VoidCallback? onPin, bool pinned = false}) {
   final scope = AppScope.of(context);
   return _menu(context, at, [
-    (Icons.play_arrow_rounded, 'Play', () => scope.player.playSongs(songs, 0), false),
-    (Icons.shuffle_rounded, 'Shuffle play', () => scope.player.playSongs(songs, 0, shuffled: true), false),
+    (Icons.play_arrow_rounded, 'Play', () => scope.player.playSongs(songs, 0, from: title), false),
+    (Icons.shuffle_rounded, 'Shuffle play', () => scope.player.playSongs(songs, 0, shuffled: true, from: title), false),
     (Icons.queue_music_rounded, 'Add to queue', () async {
       for (final s in songs) {
         await scope.player.addToQueue(s);
@@ -60,6 +62,7 @@ Future<void> songsMenu(BuildContext context, Offset at, List<Song> songs, {Strin
     }, false),
     (Icons.playlist_add_rounded, 'Add to playlist…', () => showAddToPlaylist(context, songs), false),
     if (albumArtist != null && albumArtist.isNotEmpty) (Icons.person_rounded, 'Go to artist', () => Nav.push(ArtistScreen(name: albumArtist)), false),
+    if (onPin != null) (pinned ? Icons.push_pin_outlined : Icons.push_pin_rounded, pinned ? 'Unpin' : 'Pin to top', onPin, false),
     if (onRename != null) (Icons.edit_rounded, 'Rename', onRename, false),
     if (onDelete != null) (Icons.delete_outline_rounded, 'Delete', onDelete, true),
   ]);
@@ -80,4 +83,19 @@ class RightClick extends StatelessWidget {
       child: child,
     );
   }
+}
+
+/// Menu for a whole playlist: play, queue, pin, rename, delete.
+Future<void> playlistMenu(BuildContext context, Offset at, Playlist pl) {
+  final scope = AppScope.of(context);
+  final songs = [for (final id in pl.songIds) ?scope.library.byId(id)];
+  return songsMenu(context, at, songs,
+      title: pl.name,
+      pinned: pl.pinned,
+      onPin: () => scope.playlists.togglePin(pl),
+      onRename: () async {
+        final name = await promptText(context, title: 'Rename', initial: pl.name);
+        if (name != null) await scope.playlists.rename(pl, name);
+      },
+      onDelete: () => scope.playlists.delete(pl));
 }

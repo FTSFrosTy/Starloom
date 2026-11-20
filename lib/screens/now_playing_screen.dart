@@ -1,7 +1,4 @@
 import 'dart:io';
-import 'dart:isolate';
-
-import 'package:audio_metadata_reader/audio_metadata_reader.dart' show readMetadata;
 import 'package:flutter/material.dart';
 import 'package:mpv_audio_kit/mpv_audio_kit.dart' show Loop;
 
@@ -10,7 +7,9 @@ import '../services/app_scope.dart';
 import '../services/player_service.dart';
 import '../theme/palette.dart';
 import '../widgets/clay.dart';
-import '../widgets/cover.dart';
+import '../widgets/context_menu.dart';
+import '../widgets/panels.dart';
+import '../widgets/ui_fx.dart';
 import '../widgets/nav.dart';
 import '../widgets/scenery.dart';
 import '../widgets/song_tile.dart';
@@ -52,8 +51,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           offset: Offset(0, _dragY),
           child: Backdrop(
             child: SafeArea(
-              child: Center(
-                child: ConstrainedBox(
+              child: LayoutBuilder(builder: (context, box) {
+                final side = box.maxWidth >= 1000;
+                final main = ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 560),
                   child: ListenableBuilder(
                     listenable: Listenable.merge([player, scope.user]),
@@ -72,7 +72,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                               ),
                               Expanded(
                                 child: Center(
-                                  child: Text(sleeping ? 'sleep timer on' : 'now playing', style: Clay.book(17, color: sleeping ? Clay.candle : null)),
+                                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                                    Text(
+                                      sleeping ? 'sleep timer on' : (player.playingFrom == null ? 'now playing' : 'playing from'),
+                                      style: Clay.book(player.playingFrom == null ? 17 : 13, color: sleeping ? Clay.candle : null),
+                                    ),
+                                    if (player.playingFrom != null)
+                                      Text(player.playingFrom!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Clay.bone, fontWeight: FontWeight.w800, fontSize: 14)),
+                                  ]),
                                 ),
                               ),
                               if (song != null) _MoreMenu(song: song, onNavigate: _close) else const SizedBox(width: 48),
@@ -84,14 +91,17 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                               padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 8),
                               child: AnimatedSwitcher(
                                 duration: const Duration(milliseconds: 180),
-                                child: _lyrics && song != null
-                                    ? _Lyrics(key: ValueKey('ly-${song.id}'), song: song)
-                                    : Center(
+                                child: _lyrics && song != null && !side
+                                    ? LyricsView(key: ValueKey('ly-${song.id}'), song: song)
+                                    : RightClick(
+                                        onMenu: (at) => song == null ? null : songMenu(context, at, song),
+                                        child: Center(
                                         child: ClayRecord(
                                           spinning: player.playing,
                                           seedText: song?.album.isNotEmpty == true ? song!.album : (song?.title ?? 'starloom'),
                                           cover: _coverFor(context, song, player),
                                         ),
+                                      ),
                                       ),
                               ),
                             ),
@@ -100,12 +110,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                             padding: const EdgeInsets.symmetric(horizontal: 14),
                             child: Row(
                               children: [
-                                IconButton(
+                                if (!side) IconButton(
                                   tooltip: 'Lyrics',
                                   icon: Icon(Icons.lyrics_rounded, color: _lyrics ? Clay.candle : Clay.ash),
                                   onPressed: () => setState(() => _lyrics = !_lyrics),
                                 ),
                                 Expanded(
+                                  child: RightClick(
+                                  onMenu: (at) => song == null ? null : songMenu(context, at, song),
                                   child: Column(children: [
                                     Text(
                                       song?.title ?? 'Nothing playing',
@@ -131,6 +143,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                                       ),
                                     ),
                                   ]),
+                                ),
                                 ),
                                 IconButton(
                                   tooltip: liked ? 'Unlike' : 'Like',
@@ -162,11 +175,12 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                                   )),
                                 ),
                                 Expanded(child: VolumeSlider(player: player)),
-                                IconButton(
-                                  tooltip: 'Queue',
-                                  icon: Icon(Icons.queue_music_rounded, color: Clay.bone),
-                                  onPressed: () => showQueue(context),
-                                ),
+                                if (!side)
+                                  IconButton(
+                                    tooltip: 'Queue',
+                                    icon: Icon(Icons.queue_music_rounded, color: Clay.bone),
+                                    onPressed: () => showQueue(context),
+                                  ),
                               ],
                             ),
                           ),
@@ -174,8 +188,26 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                       );
                     },
                   ),
-                ),
-              ),
+                );
+                if (!side) return Center(child: main);
+                return Row(children: [
+                  Expanded(flex: 5, child: Center(child: main)),
+                  Expanded(
+                    flex: 4,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(0, 16, 24, 16),
+                      child: ClayBox(
+                        color: Clay.panel.withValues(alpha: 0.92),
+                        seed: 4242,
+                        squareness: 6,
+                        wobble: 0.5,
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                        child: _SideColumn(lyrics: _lyrics, onLyrics: (v) => setState(() => _lyrics = v)),
+                      ),
+                    ),
+                  ),
+                ]);
+              }),
             ),
           ),
         ),
@@ -215,6 +247,8 @@ class _MoreMenu extends StatelessWidget {
             Nav.push(ArtistScreen(name: song.artist));
           case 'sleep':
             showSleepTimer(context, player);
+          case 'savequeue':
+            saveQueueAsPlaylist(context);
         }
       },
       itemBuilder: (_) => [
@@ -222,6 +256,7 @@ class _MoreMenu extends StatelessWidget {
         if (song.album.isNotEmpty) const PopupMenuItem(value: 'album', child: Text('Go to album')),
         if (song.artist.isNotEmpty) const PopupMenuItem(value: 'artist', child: Text('Go to artist')),
         const PopupMenuItem(value: 'sleep', child: Text('Sleep timer…')),
+        const PopupMenuItem(value: 'savequeue', child: Text('Save queue as playlist…')),
       ],
     );
   }
@@ -262,89 +297,6 @@ void showSleepTimer(BuildContext context, PlayerService player) {
   );
 }
 
-/// The queue: drag to reorder, swipe to remove, tap to jump.
-void showQueue(BuildContext context) {
-  final player = AppScope.of(context).player;
-  showModalBottomSheet<void>(
-    context: context,
-    useRootNavigator: true,
-    isScrollControlled: true,
-    builder: (sheet) => SizedBox(
-      height: MediaQuery.sizeOf(sheet).height * 0.75,
-      child: ListenableBuilder(
-        listenable: player,
-        builder: (context, _) {
-          final q = player.queue;
-          return Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
-                child: Row(children: [
-                  Expanded(child: Text('Queue', style: Clay.title(26))),
-                  if (player.queuedAhead > 0)
-                    TextButton(onPressed: player.clearQueued, child: Text('Clear queue', style: TextStyle(color: Clay.candle)))
-                  else if (player.index < q.length - 1)
-                    TextButton(onPressed: player.clearUpNext, child: Text('Clear up next', style: TextStyle(color: Clay.candle))),
-                ]),
-              ),
-              Expanded(
-                child: q.isEmpty
-                    ? Center(child: Text('Nothing queued', style: Clay.book(17)))
-                    : ReorderableListView.builder(
-                        buildDefaultDragHandles: false,
-                        scrollController: ScrollController(initialScrollOffset: ((player.index - 2).clamp(0, q.length) * 64).toDouble()),
-                        itemCount: q.length,
-                        onReorder: (from, to) => player.moveInQueue(from, to),
-                        itemBuilder: (context, i) {
-                          final s = q[i];
-                          final isCur = i == player.index;
-                          return Dismissible(
-                            key: ValueKey('q-$i-${s.id}'),
-                            direction: isCur ? DismissDirection.none : DismissDirection.endToStart,
-                            background: Container(
-                              color: Clay.rose,
-                              alignment: Alignment.centerRight,
-                              padding: const EdgeInsets.only(right: 22),
-                              child: Icon(Icons.delete_rounded, color: Clay.bone),
-                            ),
-                            onDismissed: (_) => player.removeFromQueue(i),
-                            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              if (i == player.index) _queueHeader('Now playing'),
-                              if (i == player.index + 1 && player.queuedAhead > 0) _queueHeader('Next in queue'),
-                              if (i == player.index + 1 + player.queuedAhead && i < q.length) _queueHeader('Next up'),
-                              SizedBox(
-                              height: 64,
-                              child: ListTile(
-                                onTap: () => player.jumpTo(i),
-                                leading: Cover(artKey: s.artKey, seedText: s.album.isNotEmpty ? s.album : s.title, size: 42),
-                                title: Text(
-                                  s.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(color: isCur ? Clay.candle : Clay.bone, fontWeight: isCur ? FontWeight.w700 : FontWeight.w500),
-                                ),
-                                subtitle: Text(s.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Clay.ash, fontSize: 12)),
-                                trailing: ReorderableDragStartListener(index: i, child: Icon(Icons.drag_handle_rounded, color: Clay.ash)),
-                              ),
-                            ),
-                            ]),
-                          );
-                        },
-                      ),
-              ),
-            ],
-          );
-        },
-      ),
-    ),
-  );
-}
-
-Widget _queueHeader(String text) => Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 2),
-      child: Text(text, style: Clay.title(18, color: Clay.candle)),
-    );
-
 class _Controls extends StatelessWidget {
   const _Controls({required this.player});
 
@@ -367,14 +319,18 @@ class _Controls extends StatelessWidget {
           onTap: player.toggleShuffle,
         ),
         ClayIconButton(icon: Icons.skip_previous_rounded, tooltip: 'Previous', size: 58, seed: 52, onTap: player.previous),
-        ClayIconButton(
-          icon: player.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-          tooltip: player.playing ? 'Pause' : 'Play',
-          size: 82,
-          seed: 53,
-          color: Clay.pumpkin,
-          boil: true,
-          onTap: player.togglePlay,
+        BeatGlow(
+          player: player,
+          spread: 1.3,
+          child: ClayIconButton(
+            icon: player.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            tooltip: player.playing ? 'Pause' : 'Play',
+            size: 82,
+            seed: 53,
+            color: Clay.pumpkin,
+            boil: true,
+            onTap: player.togglePlay,
+          ),
         ),
         ClayIconButton(icon: Icons.skip_next_rounded, tooltip: 'Next', size: 58, seed: 54, onTap: player.next),
         ClayIconButton(
@@ -395,55 +351,44 @@ class _Controls extends StatelessWidget {
   }
 }
 
-/// Lyrics embedded in the file's tags (or a matching .lrc next to it).
-class _Lyrics extends StatefulWidget {
-  const _Lyrics({super.key, required this.song});
 
-  final Song song;
+/// Wide windows: the full player gets a column for the queue or lyrics
+/// beside it instead of empty space.
+class _SideColumn extends StatelessWidget {
+  const _SideColumn({required this.lyrics, required this.onLyrics});
 
-  @override
-  State<_Lyrics> createState() => _LyricsState();
-}
-
-class _LyricsState extends State<_Lyrics> {
-  late final Future<String?> _text = _loadLyrics(widget.song.path);
+  final bool lyrics;
+  final ValueChanged<bool> onLyrics;
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<String?>(
-      future: _text,
-      builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) return const SizedBox.shrink();
-        final text = snap.data;
-        return ClayBox(
-          color: Clay.bruise.withValues(alpha: 0.92),
-          seed: 515,
-          squareness: 5,
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-          child: text == null
-              ? Center(child: Text('No lyrics in this file.', style: Clay.book(18)))
-              : SingleChildScrollView(
-                  child: Text(text, textAlign: TextAlign.center, style: TextStyle(color: Clay.bone, fontSize: 17, height: 1.6, fontWeight: FontWeight.w600)),
-                ),
+    final player = AppScope.of(context).player;
+    Widget tab(String label, bool on, VoidCallback onTap) => Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: Squish(
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(color: on ? Clay.candle : Clay.bruise.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(20)),
+              child: Text(label, style: TextStyle(color: on ? Clay.onAccent : Clay.bone, fontWeight: FontWeight.w700, fontSize: 13)),
+            ),
+          ),
         );
-      },
-    );
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [tab('Up next', !lyrics, () => onLyrics(false)), tab('Lyrics', lyrics, () => onLyrics(true))]),
+      const SizedBox(height: 10),
+      Expanded(
+        child: lyrics
+            ? ValueListenableBuilder<String?>(
+                valueListenable: player.currentId,
+                builder: (context, _, _) {
+                  final song = player.current;
+                  if (song == null) return Center(child: Text('Nothing playing', style: Clay.book(16)));
+                  return LyricsView(key: ValueKey(song.id), song: song, boxed: false);
+                },
+              )
+            : const QueueList(compact: true),
+      ),
+    ]);
   }
 }
-
-/// Top-level so the isolate only captures the path.
-Future<String?> _loadLyrics(String path) => Isolate.run(() {
-      String? raw;
-      final dot = path.lastIndexOf('.');
-      final lrc = File('${dot > 0 ? path.substring(0, dot) : path}.lrc');
-      if (lrc.existsSync()) {
-        raw = lrc.readAsStringSync();
-      } else {
-        try {
-          raw = readMetadata(File(path)).lyrics;
-        } catch (_) {}
-      }
-      if (raw == null || raw.trim().isEmpty) return null;
-      // Drop LRC timestamps like [01:23.45] and tag lines like [ar:...].
-      return raw.split(RegExp(r'\r?\n')).map((l) => l.replaceAll(RegExp(r'\[[^\]]*\]'), '').trim()).join('\n').trim();
-    });

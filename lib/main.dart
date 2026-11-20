@@ -20,6 +20,7 @@ import 'theme/palette.dart';
 import 'widgets/clay.dart';
 import 'widgets/nav.dart';
 import 'widgets/tap_fx.dart';
+import 'widgets/ui_fx.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -144,7 +145,7 @@ class _StarloomAppState extends State<StarloomApp> with WidgetsBindingObserver {
           // Dark status bar icons on the light themes.
           return AnnotatedRegion<SystemUiOverlayStyle>(
             value: Clay.current.dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
-            child: TapFx(child: child!),
+            child: TapFx(child: UiFx(player: AppScope.of(context).player, child: child!)),
           );
         },
         home: const HomeShell(),

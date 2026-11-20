@@ -169,6 +169,7 @@ class Playlist {
     List<MissingEntry>? missing,
     int? createdMs,
     int? modifiedMs,
+    this.pinned = false,
   })  : missing = missing ?? [],
         createdMs = createdMs ?? DateTime.now().millisecondsSinceEpoch,
         modifiedMs = modifiedMs ?? DateTime.now().millisecondsSinceEpoch;
@@ -182,6 +183,9 @@ class Playlist {
   /// Last change, for syncing between devices.
   int modifiedMs;
 
+  /// Pinned to the top of Your Library.
+  bool pinned;
+
   void touch() => modifiedMs = DateTime.now().millisecondsSinceEpoch;
 
   Map<String, Object?> toJson() => {
@@ -191,6 +195,7 @@ class Playlist {
         'missing': missing.map((m) => m.toJson()).toList(),
         'createdMs': createdMs,
         'modifiedMs': modifiedMs,
+        'pinned': pinned,
       };
 
   static Playlist fromJson(Map<String, Object?> j) => Playlist(
@@ -202,6 +207,7 @@ class Playlist {
             .toList(),
         createdMs: (j['createdMs'] as num?)?.toInt(),
         modifiedMs: (j['modifiedMs'] as num?)?.toInt(),
+        pinned: (j['pinned'] as bool?) ?? false,
       );
 }
 
