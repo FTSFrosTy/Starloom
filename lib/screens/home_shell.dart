@@ -91,13 +91,13 @@ class _HomeShellState extends State<HomeShell> {
     if (ctrl && e.logicalKey == LogicalKeyboardKey.arrowUp) {
       final v = (player.volume + 5).clamp(0.0, 100.0);
       player.setVolume(v);
-      AppScope.of(context).prefs.rememberVolume(v);
+      if (player.output == null) AppScope.of(context).prefs.rememberVolume(v);
       return true;
     }
     if (ctrl && e.logicalKey == LogicalKeyboardKey.arrowDown) {
       final v = (player.volume - 5).clamp(0.0, 100.0);
       player.setVolume(v);
-      AppScope.of(context).prefs.rememberVolume(v);
+      if (player.output == null) AppScope.of(context).prefs.rememberVolume(v);
       return true;
     }
     if (ctrl && e.logicalKey == LogicalKeyboardKey.keyS) {
@@ -566,7 +566,7 @@ class VolumeSlider extends StatelessWidget {
         onPressed: () {
           final next = v == 0 ? (prefs.volume > 0 ? prefs.volume : 70.0) : 0.0;
           player.setVolume(next);
-          if (next > 0) prefs.rememberVolume(next);
+          if (next > 0 && player.output == null) prefs.rememberVolume(next);
         },
       ),
       Expanded(
@@ -576,7 +576,9 @@ class VolumeSlider extends StatelessWidget {
           color: Clay.ghost,
           seed: 71,
           onChanged: (x) => player.setVolume(x * 100),
-          onChangeEnd: (x) => prefs.rememberVolume(x * 100),
+          onChangeEnd: (x) {
+            if (player.output == null) prefs.rememberVolume(x * 100);
+          },
         ),
       ),
     ]);

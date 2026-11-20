@@ -35,6 +35,13 @@ class StarloomFolders {
     );
   }
 
+  /// Google Cast devices found on the Wi-Fi with Bonjour (iOS only):
+  /// maps with name, host, port, model.
+  static Future<List<Map<String, Object?>>> browseCast({double seconds = 3}) async {
+    final res = await _channel.invokeListMethod<Object?>('browseCast', {'seconds': seconds});
+    return [for (final e in res ?? const []) (e as Map).cast<String, Object?>()];
+  }
+
   /// Re-opens a folder from its bookmark and keeps access for this launch.
   static Future<RestoredFolder?> restore(String bookmark) async {
     final res = await _channel.invokeMapMethod<String, Object?>('restore', {'bookmark': bookmark});

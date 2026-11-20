@@ -39,7 +39,32 @@ class PlayerService extends ChangeNotifier {
   Loop loop = Loop.off;
   Duration duration = Duration.zero;
   CoverArt? cover;
-  double volume = 100;
+  double _volume = 100;
+
+  /// Speaker volume while casting, otherwise this device's volume (0–100).
+  double get volume => _output?.volume ?? _volume;
+
+  RemoteOutput? _output;
+  double _savedVolume = 100;
+
+  /// Set while the sound goes to another speaker (Google Cast). The local
+  /// player keeps running muted as the clock and the queue, so everything
+  /// (lock screen, queue, scrubber) works the same.
+  RemoteOutput? get output => _output;
+
+  Future<void> routeTo(RemoteOutput? out) async {
+    if (out != null && _output == null) {
+      _savedVolume = _volume;
+      _output = out;
+      await player.setVolume(0);
+    } else if (out == null && _output != null) {
+      _output = null;
+      await player.setVolume(_savedVolume);
+    } else {
+      _output = out;
+    }
+    notifyListeners();
+  }
 
   /// Id of the song playing now. Song rows listen to just this.
   final ValueNotifier<String?> currentId = ValueNotifier(null);
@@ -79,7 +104,7 @@ class PlayerService extends ChangeNotifier {
       notifyListeners();
     }));
     _subs.add(player.stream.volume.listen((v) {
-      volume = v;
+      _volume = v;
       notifyListeners();
     }));
     _subs.add(player.stream.error.listen((e) {
@@ -183,13 +208,16 @@ class PlayerService extends ChangeNotifier {
   /// Like most players: restart the song if we're past 3 s, else go back.
   Future<void> previous() async {
     if (position > const Duration(seconds: 3) || index <= 0) {
-      await player.seek(Duration.zero);
+      await seek(Duration.zero);
     } else {
       await player.previous();
     }
   }
 
-  Future<void> seek(Duration d) => player.seek(d);
+  Future<void> seek(Duration d) {
+    _output?.seek(d);
+    return player.seek(d);
+  }
 
   Future<void> jumpTo(int i) => player.jump(i);
 
@@ -224,7 +252,15 @@ class PlayerService extends ChangeNotifier {
     }
   }
 
-  Future<void> setVolume(double v) => player.setVolume(v.clamp(0, 100).toDouble());
+  Future<void> setVolume(double v) async {
+    final out = _output;
+    if (out != null) {
+      out.setVolume(v.clamp(0, 100).toDouble());
+      notifyListeners();
+      return;
+    }
+    await player.setVolume(v.clamp(0, 100).toDouble());
+  }
 
   /// Queue editing. Indexes are positions in [queue], which matches mpv's
   /// playlist as long as every entry is a library song.
@@ -280,4 +316,14 @@ class PlayerService extends ChangeNotifier {
     player.dispose();
     super.dispose();
   }
+}
+
+/// Another speaker playing in sync with the (muted) local player.
+abstract class RemoteOutput {
+  String get name;
+
+  /// 0–100.
+  double get volume;
+  void setVolume(double v);
+  void seek(Duration d);
 }
