@@ -50,8 +50,13 @@ final class WatchPlayer: ObservableObject {
 
   private let engine = AVAudioEngine()
   private let node = AVAudioPlayerNode()
-  private let eqUnit = AVAudioUnitEQ(numberOfBands: 5)
+  // The watch has no built-in EQ effect, so the EQ runs on the audio as it
+  // is read from the file, a chunk at a time, on this queue.
+  private let io = DispatchQueue(label: "starloom.watch.audio")
+  private let dsp = EQProcessor()
   private var file: AVAudioFile?
+  private var inFlight = 0
+  private var reachedEnd = false
   private var format: AVAudioFormat?
   private var startFrame: AVAudioFramePosition = 0
   private var generation = 0
@@ -66,18 +71,8 @@ final class WatchPlayer: ObservableObject {
       volume = UserDefaults.standard.double(forKey: "volume")
     }
     engine.attach(node)
-    engine.attach(eqUnit)
-    engine.connect(node, to: eqUnit, format: nil)
-    engine.connect(eqUnit, to: engine.mainMixerNode, format: nil)
+    engine.connect(node, to: engine.mainMixerNode, format: nil)
     engine.mainMixerNode.outputVolume = Float(volume)
-    let b = eqUnit.bands
-    b[0].filterType = .lowShelf; b[0].frequency = 100
-    b[1].filterType = .parametric; b[1].frequency = 1000; b[1].bandwidth = 2
-    b[2].filterType = .highShelf; b[2].frequency = 6000
-    b[3].filterType = .parametric; b[3].frequency = 8500; b[3].bandwidth = 1
-    b[4].filterType = .parametric; b[4].frequency = 12000; b[4].bandwidth = 1
-    for band in b { band.bypass = false }
-    applyEQ()
     setUpRemote()
     NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] n in
       guard let raw = n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
@@ -103,17 +98,11 @@ final class WatchPlayer: ObservableObject {
     eq = EQSettings(bass: p.1, mid: p.2, treble: p.3, hats: eq.hats, preset: p.0)
   }
 
+  /// New EQ takes effect from the next chunk (a fraction of a second).
   private func applyEQ() {
-    let b = eqUnit.bands
-    b[0].gain = Float(eq.bass)
-    b[1].gain = Float(eq.mid)
-    b[2].gain = Float(eq.treble)
-    b[3].gain = eq.hats ? -7 : 0
-    b[4].gain = eq.hats ? -4 : 0
-    // Pull the overall level down as things are boosted so loud drops
-    // don't clip.
-    let boost = max(0, eq.bass) * 0.6 + max(0, eq.mid) * 0.4 + max(0, eq.treble) * 0.35
-    eqUnit.globalGain = Float(-boost)
+    let s = eq
+    let sr = format?.sampleRate ?? 44100
+    io.async { self.dsp.configure(s, sampleRate: sr) }
   }
 
   // MARK: Playback
@@ -239,20 +228,20 @@ final class WatchPlayer: ObservableObject {
       let fmt = f.processingFormat
       if format == nil || format! != fmt {
         engine.disconnectNodeOutput(node)
-        engine.disconnectNodeOutput(eqUnit)
-        engine.connect(node, to: eqUnit, format: fmt)
-        engine.connect(eqUnit, to: engine.mainMixerNode, format: fmt)
+        engine.connect(node, to: engine.mainMixerNode, format: fmt)
         format = fmt
       }
       startFrame = AVAudioFramePosition(seconds * fmt.sampleRate)
-      let remaining = f.length - startFrame
-      guard remaining > 0 else { finished(); return }
-      node.scheduleSegment(f, startingFrame: startFrame, frameCount: AVAudioFrameCount(remaining), at: nil,
-                           completionCallbackType: .dataPlayedBack) { [weak self] _ in
-        DispatchQueue.main.async {
-          guard let self, self.generation == gen else { return }
-          self.finished()
-        }
+      guard f.length - startFrame > 0 else { finished(); return }
+      let s = eq
+      io.sync {
+        f.framePosition = startFrame
+        inFlight = 0
+        reachedEnd = false
+        dsp.configure(s, sampleRate: fmt.sampleRate)
+        dsp.reset()
+        // Keep about a second of audio queued ahead.
+        for _ in 0..<4 { scheduleNext(f, gen: gen) }
       }
       if !engine.isRunning { try engine.start() }
       if autoplay {
@@ -267,6 +256,36 @@ final class WatchPlayer: ObservableObject {
       playing = false
     }
     updateNowPlaying()
+  }
+
+  /// Reads, EQs and queues the next chunk. Runs on `io`.
+  private func scheduleNext(_ f: AVAudioFile, gen: Int) {
+    guard gen == generation, !reachedEnd else { return }
+    guard let buf = AVAudioPCMBuffer(pcmFormat: f.processingFormat, frameCapacity: 12000) else { return }
+    do {
+      try f.read(into: buf)
+    } catch {
+      buf.frameLength = 0
+    }
+    if buf.frameLength == 0 {
+      reachedEnd = true
+      if inFlight == 0 { DispatchQueue.main.async { if gen == self.generation { self.finished() } } }
+      return
+    }
+    dsp.process(buf)
+    inFlight += 1
+    node.scheduleBuffer(buf, at: nil, options: [], completionCallbackType: .dataPlayedBack) { [weak self] _ in
+      guard let self else { return }
+      self.io.async {
+        guard gen == self.generation else { return }
+        self.inFlight -= 1
+        if self.reachedEnd {
+          if self.inFlight == 0 { DispatchQueue.main.async { if gen == self.generation { self.finished() } } }
+        } else {
+          self.scheduleNext(f, gen: gen)
+        }
+      }
+    }
   }
 
   private func finished() {
