@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -78,6 +81,22 @@ class PlaylistStore extends ChangeNotifier {
     playlists.insert(0, pl);
     await _save();
     return pl;
+  }
+
+  /// Re-importing a playlist: swap in the new song list, keep id and pin.
+  Future<void> replaceSongs(Playlist pl, List<String> songIds, List<MissingEntry> missing) async {
+    pl.songIds
+      ..clear()
+      ..addAll(songIds);
+    pl.missing
+      ..clear()
+      ..addAll(missing);
+    await _save(pl);
+  }
+
+  Playlist? byName(String name) {
+    final n = name.trim().toLowerCase();
+    return playlists.where((p) => p.name.trim().toLowerCase() == n).firstOrNull;
   }
 
   Future<void> rename(Playlist pl, String name) async {
@@ -168,7 +187,7 @@ _LocalEntry? _parseLocal(String line) {
 
 /// Matches each line of a pasted Spotify playlist (Ctrl+A, Ctrl+C in Spotify
 /// desktop) to songs in the library by title, artist, album and length.
-ImportReport importSpotifyList(String text, List<Song> library) {
+ImportReport importSpotifyList(String text, List<Song> library, {Map<String, String> trackTitles = const {}}) {
   final byTitle = <String, List<Song>>{};
   for (final s in library) {
     byTitle.putIfAbsent(normalizeTitle(s.title), () => []).add(s);
@@ -186,8 +205,14 @@ ImportReport importSpotifyList(String text, List<Song> library) {
     final line = raw.trim();
     if (line.isEmpty) continue;
     if (line.contains('open.spotify.com/track/')) {
-      final id = line.split('/track/').last.split('?').first;
-      streaming.add(MissingEntry(title: 'Spotify track $id', artist: '', album: '', seconds: 0, streaming: true));
+      final id = line.split('/track/').last.split('?').first.trim();
+      final title = trackTitles[id];
+      final song = title == null ? null : _bestMatch(_LocalEntry('', '', title, 0), byTitle);
+      if (song != null) {
+        matched.add(song.id);
+      } else {
+        streaming.add(MissingEntry(title: title ?? 'Spotify track $id', artist: '', album: '', seconds: 0, streaming: true));
+      }
       continue;
     }
     final e = _parseLocal(line);
@@ -237,4 +262,94 @@ Song? _bestMatch(_LocalEntry e, Map<String, List<Song>> byTitle) {
   // Same title but clearly a different length: treat as missing.
   if (bestScore <= -20) return null;
   return best;
+}
+
+/// Spotify track ids in a pasted list.
+List<String> spotifyTrackIds(String text) =>
+    RegExp(r'open\.spotify\.com/track/([A-Za-z0-9]+)').allMatches(text).map((m) => m.group(1)!).toSet().toList();
+
+/// Looks up the titles of Spotify tracks (public oEmbed, no login), so
+/// pasted Spotify songs can be matched to files you have.
+Future<Map<String, String>> fetchSpotifyTitles(List<String> ids, {void Function(int done)? progress}) async {
+  final out = <String, String>{};
+  if (ids.isEmpty) return out;
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+  var next = 0, done = 0;
+  Future<void> worker() async {
+    while (next < ids.length) {
+      final id = ids[next++];
+      try {
+        final uri = Uri.https('open.spotify.com', '/oembed', {'url': 'https://open.spotify.com/track/$id'});
+        final res = await (await client.getUrl(uri)).close().timeout(const Duration(seconds: 10));
+        if (res.statusCode == 200) {
+          final j = jsonDecode(await utf8.decoder.bind(res).join());
+          final t = j is Map ? j['title'] : null;
+          if (t is String && t.isNotEmpty) out[id] = t;
+        } else {
+          await res.drain<void>();
+        }
+      } catch (_) {}
+      progress?.call(++done);
+    }
+  }
+
+  await Future.wait(List.generate(6, (_) => worker()));
+  client.close(force: true);
+  return out;
+}
+
+/// A Spotify playlist read from its public web page (the embed player).
+class SpotifyPlaylistPage {
+  SpotifyPlaylistPage(this.name, this.lines);
+  final String name;
+
+  /// One line per song in the same `open.spotify.com/local/artist/album/title/seconds`
+  /// shape the desktop copy uses, so the normal matcher handles it.
+  final List<String> lines;
+}
+
+/// Reads a public Spotify playlist straight from a link, no login.
+/// Spotify only shows its own catalog songs this way: local files in the
+/// playlist aren't visible, so those still need the desktop copy-paste.
+Future<SpotifyPlaylistPage> fetchSpotifyPlaylist(String link) async {
+  final id = RegExp(r'playlist[/:]([A-Za-z0-9]+)').firstMatch(link)?.group(1);
+  if (id == null) throw 'That doesn\'t look like a Spotify playlist link';
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+  try {
+    final req = await client.getUrl(Uri.https('open.spotify.com', '/embed/playlist/$id'));
+    req.headers.set(HttpHeaders.userAgentHeader, 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1');
+    final res = await req.close().timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200) throw 'Spotify answered ${res.statusCode}. Is the playlist public?';
+    final html = await utf8.decoder.bind(res).join();
+    final m = RegExp(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', dotAll: true).firstMatch(html);
+    if (m == null) throw 'Spotify changed its page; use the desktop copy-paste instead';
+    final data = jsonDecode(m.group(1)!);
+    final entity = _dig(data, ['props', 'pageProps', 'state', 'data', 'entity']);
+    if (entity is! Map) throw 'Couldn\'t read that playlist';
+    final name = (entity['name'] ?? entity['title'] ?? 'Spotify playlist').toString();
+    final lines = <String>[];
+    for (final t in (entity['trackList'] as List?) ?? const []) {
+      if (t is! Map) continue;
+      final title = (t['title'] ?? '').toString();
+      if (title.isEmpty) continue;
+      final artist = (t['subtitle'] ?? '').toString().split(',').first.trim();
+      final secs = ((t['duration'] as num?) ?? 0) ~/ 1000;
+      String enc(String s) => Uri.encodeComponent(s);
+      lines.add('https://open.spotify.com/local/${enc(artist)}//${enc(title)}/$secs');
+    }
+    return SpotifyPlaylistPage(name, lines);
+  } finally {
+    client.close(force: true);
+  }
+}
+
+Object? _dig(Object? o, List<String> path) {
+  for (final k in path) {
+    if (o is Map && o.containsKey(k)) {
+      o = o[k];
+    } else {
+      return null;
+    }
+  }
+  return o;
 }
