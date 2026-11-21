@@ -46,6 +46,11 @@ Future<void> main() async {
   await Future.wait([playlists.init(), player.init(), user.init()]);
   await eq.init(player.player);
   await player.setVolume(prefs.volume);
+  await player.restoreModes(
+    shuffle: prefs.shuffle,
+    loop: Loop.values.where((l) => l.name == prefs.loop).firstOrNull ?? Loop.off,
+  );
+  player.onModesChanged = (shuffle, loop) => prefs.rememberModes(shuffle, loop.name);
   player.onSongStarted = user.recordPlay;
   Beat.instance.attach(player.player);
   final sync = SyncService(storage, library, playlists, user, player);

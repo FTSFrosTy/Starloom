@@ -27,6 +27,10 @@ class AppPrefs extends ChangeNotifier {
   /// PC: keep the animations going when another window is in front.
   bool animateUnfocused = false;
 
+  /// Shuffle and repeat buttons, remembered between launches.
+  bool shuffle = false;
+  String loop = 'off';
+
   StarTheme get theme => kThemes.firstWhere((t) => t.id == themeId, orElse: () => kThemes.first);
 
   Future<void> init() async {
@@ -38,6 +42,8 @@ class AppPrefs extends ChangeNotifier {
       volume = (raw['volume'] as num?)?.toDouble() ?? 100;
       haptics = (raw['haptics'] as bool?) ?? true;
       animateUnfocused = (raw['animateUnfocused'] as bool?) ?? false;
+      shuffle = (raw['shuffle'] as bool?) ?? false;
+      loop = (raw['loop'] as String?) ?? 'off';
     }
     StopMotion.instance.enabled = !reduceMotion;
     StopMotion.instance.keepWhenUnfocused = animateUnfocused;
@@ -51,7 +57,16 @@ class AppPrefs extends ChangeNotifier {
         'volume': volume,
         'haptics': haptics,
         'animateUnfocused': animateUnfocused,
+        'shuffle': shuffle,
+        'loop': loop,
       };
+
+  /// Saved quietly (no rebuild).
+  void rememberModes(bool shuffle, String loop) {
+    this.shuffle = shuffle;
+    this.loop = loop;
+    _storage.write('prefs.json', _json());
+  }
 
   Future<void> _save() {
     notifyListeners();

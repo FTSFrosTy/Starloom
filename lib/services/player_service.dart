@@ -90,10 +90,8 @@ class PlayerService extends ChangeNotifier {
       playing = v;
       notifyListeners();
     }));
-    _subs.add(player.stream.shuffle.listen((v) {
-      shuffle = v;
-      notifyListeners();
-    }));
+    // [shuffle] is our own sticky mode (like Spotify's button), not mpv's
+    // flag, which gets switched off and on while loading new lists.
     _subs.add(player.stream.loop.listen((v) {
       loop = v;
       notifyListeners();
@@ -184,19 +182,52 @@ class PlayerService extends ChangeNotifier {
         extras: {'id': s.id, 'title': s.title, 'artist': s.artist, 'album': s.album},
       );
 
-  /// Replace the queue with [songs] and start at [start].
+  /// Shuffle/repeat changed: remember them for next launch.
+  void Function(bool shuffle, Loop loop)? onModesChanged;
+
+  /// Puts back the shuffle/repeat buttons from last time.
+  Future<void> restoreModes({required bool shuffle, required Loop loop}) async {
+    this.shuffle = shuffle;
+    this.loop = loop;
+    await player.setLoop(loop);
+    notifyListeners();
+  }
+
+  /// Replace the queue with [songs] and start at [start]. With shuffle on,
+  /// that song plays first and the rest come in random order; turning
+  /// shuffle off later puts the list back in order.
   Future<void> playSongs(List<Song> songs, int start, {bool shuffled = false, String? from}) async {
     if (songs.isEmpty) return;
     playingFrom = from;
-    var list = songs;
-    var at = start.clamp(0, songs.length - 1);
-    if (shuffled) {
-      list = List<Song>.of(songs)..shuffle(Random());
-      at = 0;
+    if (shuffled && !shuffle) {
+      shuffle = true;
+      onModesChanged?.call(shuffle, loop);
     }
-    if (shuffle) await player.setShuffle(false);
+    final at = shuffled ? Random().nextInt(songs.length) : start.clamp(0, songs.length - 1);
+    // mpv's own shuffle flag would scramble the list as it loads.
+    if (player.state.playback.shuffle) await player.setShuffle(false);
     queuedAhead = 0;
-    await player.openAll(list.map(_media).toList(), index: at, play: true);
+    await player.openAll(songs.map(_media).toList(), index: at, play: true);
+    if (shuffle) await _shuffleAroundCurrent();
+    notifyListeners();
+  }
+
+  /// Shuffles the queue but keeps the playing song first, so every other
+  /// song is still ahead of you.
+  Future<void> _shuffleAroundCurrent() async {
+    final id = current?.id ?? currentId.value;
+    await player.setShuffle(true);
+    queuedAhead = 0;
+    // The new order arrives from mpv a moment later.
+    for (var t = 0; t < 10; t++) {
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      final items = player.state.playback.playlist.items;
+      final i = items.indexWhere((m) => m.extras?['id'] == id);
+      if (i >= 0) {
+        if (i > 0) await player.move(i, 0);
+        return;
+      }
+    }
   }
 
   Future<void> togglePlay() async {
@@ -224,15 +255,29 @@ class PlayerService extends ChangeNotifier {
 
   Future<void> jumpTo(int i) => player.jump(i);
 
-  Future<void> toggleShuffle() => player.setShuffle(!shuffle);
+  Future<void> toggleShuffle() async {
+    shuffle = !shuffle;
+    notifyListeners();
+    onModesChanged?.call(shuffle, loop);
+    if (queue.isEmpty) return;
+    if (shuffle) {
+      await _shuffleAroundCurrent();
+    } else {
+      queuedAhead = 0;
+      await player.setShuffle(false); // back to the original order
+    }
+  }
 
-  Future<void> cycleLoop() {
+  Future<void> cycleLoop() async {
     final nextLoop = switch (loop) {
       Loop.off => Loop.playlist,
       Loop.playlist => Loop.file,
       _ => Loop.off,
     };
-    return player.setLoop(nextLoop);
+    loop = nextLoop;
+    notifyListeners();
+    onModesChanged?.call(shuffle, loop);
+    await player.setLoop(nextLoop);
   }
 
   /// Straight after the current song, ahead of anything already queued.
