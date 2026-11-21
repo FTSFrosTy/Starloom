@@ -9,6 +9,7 @@ import '../widgets/clay.dart';
 import '../widgets/nav.dart';
 import 'home_shell.dart';
 import 'sync_screen.dart';
+import 'watch_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -111,6 +112,25 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ],
             ),
+            if (Platform.isIOS)
+              _Section(
+                title: 'Apple Watch',
+                seed: 1007,
+                children: [
+                  Text(
+                    'Put playlists on your watch and play them with AirPods, no phone needed. Bass and EQ work on the watch too.',
+                    style: Clay.book(14.5),
+                  ),
+                  const SizedBox(height: 10),
+                  ClayButton(
+                    label: 'Watch music',
+                    icon: Icons.watch_rounded,
+                    color: Clay.moss,
+                    seed: 1008,
+                    onTap: () => Nav.push(const WatchScreen()),
+                  ),
+                ],
+              ),
             _Section(
               title: 'Look & feel',
               seed: 1010,

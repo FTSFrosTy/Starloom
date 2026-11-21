@@ -1,0 +1,36 @@
+# Starloom for Apple Watch: a standalone player for playlists copied over
+# from the iPhone app. Built by CI with XcodeGen, then embedded in the iPhone
+# app (Runner.app/Watch/) so Sideloadly installs both.
+name: StarloomWatch
+options:
+  deploymentTarget:
+    watchOS: "10.0"
+targets:
+  StarloomWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: Sources
+      - path: Resources
+    scheme: {}
+    info:
+      path: Generated/Info.plist
+      properties:
+        CFBundleDisplayName: Starloom
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: com.ftsfrosty.starloom
+        WKBackgroundModes: [audio]
+        UIAppFonts: [MysteryQuest-Regular.ttf]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ftsfrosty.starloom.watchkitapp
+        PRODUCT_NAME: StarloomWatch
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "4"
+        CODE_SIGNING_ALLOWED: "NO"
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGN_IDENTITY: ""
+        GENERATE_INFOPLIST_FILE: "NO"

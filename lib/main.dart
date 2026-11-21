@@ -16,6 +16,7 @@ import 'services/playlists.dart';
 import 'services/storage.dart';
 import 'services/connect.dart';
 import 'services/sync.dart';
+import 'services/watch_bridge.dart';
 import 'services/user_data.dart';
 import 'theme/palette.dart';
 import 'widgets/clay.dart';
@@ -49,6 +50,7 @@ Future<void> main() async {
   Beat.instance.attach(player.player);
   final sync = SyncService(storage, library, playlists, user, player);
   final connect = ConnectService(storage, library, player, sync);
+  final watch = WatchBridge(storage, library, playlists, user);
   final covers = CoverFinder(storage, library);
 
   runApp(AppScope(
@@ -60,6 +62,7 @@ Future<void> main() async {
     user: user,
     sync: sync,
     connect: connect,
+    watch: watch,
     covers: covers,
     child: const StarloomApp(),
   ));
@@ -68,6 +71,7 @@ Future<void> main() async {
   unawaited(library.init().then((_) async {
     await sync.init();
     await connect.init();
+    await watch.init();
     await covers.init();
   }));
 }

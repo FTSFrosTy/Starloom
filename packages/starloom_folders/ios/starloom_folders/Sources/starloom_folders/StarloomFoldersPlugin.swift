@@ -16,6 +16,7 @@ public class StarloomFoldersPlugin: NSObject, FlutterPlugin, UIDocumentPickerDel
     let channel = FlutterMethodChannel(name: "starloom/folders", binaryMessenger: registrar.messenger())
     let instance = StarloomFoldersPlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
+    WatchLink.shared.attach(registrar.messenger())
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

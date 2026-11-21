@@ -19,3 +19,7 @@ pubspec.lock
 /linux/
 /web/
 /test/widget_test.dart
+
+# Apple Watch build output
+watch/Generated/
+watch/*.xcodeproj/
