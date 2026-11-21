@@ -127,7 +127,7 @@ class _WatchScreenState extends State<WatchScreen> {
                   style: TextStyle(color: Clay.ash, fontSize: 12.5),
                 ),
                 value: w.isOn(id),
-                onChanged: _busy != null || !w.supported ? null : (v) => _toggle(w, id, name, v),
+                onChanged: _busy != null || !w.supported || (!w.installed && !w.isOn(id)) ? null : (v) => _toggle(w, id, name, v),
               ),
           ],
         );

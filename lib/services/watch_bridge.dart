@@ -132,6 +132,12 @@ class WatchBridge extends ChangeNotifier {
   /// Put a playlist on the watch (or copy what's new in it since last time).
   /// Returns how many songs were queued.
   Future<int> put(String id, String name) async {
+    await refresh();
+    if (!installed) {
+      lastError = 'The Starloom watch app isn\'t on your watch yet, so nothing can be copied.';
+      notifyListeners();
+      return 0;
+    }
     onWatch[id] = name;
     lastError = null;
     var queued = 0;
