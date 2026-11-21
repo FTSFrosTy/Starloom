@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart' as fs;
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
@@ -50,7 +53,7 @@ Future<void> songMenu(BuildContext context, Offset at, Song song, {VoidCallback?
 }
 
 Future<void> songsMenu(BuildContext context, Offset at, List<Song> songs,
-    {String? albumArtist, String? title, VoidCallback? onRename, VoidCallback? onDelete, VoidCallback? onPin, bool pinned = false}) {
+    {String? albumArtist, String? title, VoidCallback? onRename, VoidCallback? onDelete, VoidCallback? onPin, VoidCallback? onExport, bool pinned = false}) {
   final scope = AppScope.of(context);
   return _menu(context, at, [
     (Icons.play_arrow_rounded, 'Play', () => scope.player.playSongs(songs, 0, from: title), false),
@@ -63,6 +66,7 @@ Future<void> songsMenu(BuildContext context, Offset at, List<Song> songs,
     (Icons.playlist_add_rounded, 'Add to playlist…', () => showAddToPlaylist(context, songs), false),
     if (albumArtist != null && albumArtist.isNotEmpty) (Icons.person_rounded, 'Go to artist', () => Nav.push(ArtistScreen(name: albumArtist)), false),
     if (onPin != null) (pinned ? Icons.push_pin_outlined : Icons.push_pin_rounded, pinned ? 'Unpin' : 'Pin to top', onPin, false),
+    if (onExport != null) (Icons.ios_share_rounded, 'Export for iTunes (.m3u8)', onExport, false),
     if (onRename != null) (Icons.edit_rounded, 'Rename', onRename, false),
     if (onDelete != null) (Icons.delete_outline_rounded, 'Delete', onDelete, true),
   ]);
@@ -97,5 +101,26 @@ Future<void> playlistMenu(BuildContext context, Offset at, Playlist pl) {
         final name = await promptText(context, title: 'Rename', initial: pl.name);
         if (name != null) await scope.playlists.rename(pl, name);
       },
-      onDelete: () => scope.playlists.delete(pl));
+      onDelete: () => scope.playlists.delete(pl),
+      onExport: Platform.isWindows || Platform.isMacOS ? () => exportM3u(context, pl.name, songs) : null);
+}
+
+/// Saves a playlist as an .m3u8 file (iTunes: File › Library › Import
+/// Playlist), e.g. to sync it to the iPhone's Music app and the watch.
+Future<void> exportM3u(BuildContext context, String name, List<Song> songs) async {
+  final safe = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+  final loc = await fs.getSaveLocation(suggestedName: '$safe.m3u8', acceptedTypeGroups: [
+    const fs.XTypeGroup(label: 'Playlist', extensions: ['m3u8']),
+  ]);
+  if (loc == null) return;
+  final b = StringBuffer('#EXTM3U\n');
+  for (final s in songs) {
+    if (s.path.startsWith('http')) continue;
+    b.writeln('#EXTINF:${(s.durationMs / 1000).round()},${s.artist.isEmpty ? '' : '${s.artist} - '}${s.title}');
+    b.writeln(s.path);
+  }
+  await File(loc.path).writeAsString(b.toString());
+  if (context.mounted) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('Saved ${songs.length} songs to ${loc.path}')));
+  }
 }
