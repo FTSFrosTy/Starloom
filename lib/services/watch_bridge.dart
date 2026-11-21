@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -50,6 +51,21 @@ class WatchBridge extends ChangeNotifier {
     }
     _ch.setMethodCallHandler(_onCall);
     await refresh();
+    // New songs on the phone (or added to a watch playlist) follow along
+    // to the watch automatically.
+    _library.addListener(_libraryChanged);
+    _playlists.addListener(_libraryChanged);
+    _user.addListener(_libraryChanged);
+  }
+
+  Timer? _autoTimer;
+
+  void _libraryChanged() {
+    if (onWatch.isEmpty) return;
+    _autoTimer?.cancel();
+    _autoTimer = Timer(const Duration(seconds: 4), () async {
+      if (supported && installed) await syncAll();
+    });
   }
 
   Future<void> _save() => _storage.write('watch.json', {'playlists': onWatch, 'sent': _sent.toList()});
@@ -95,8 +111,9 @@ class WatchBridge extends ChangeNotifier {
     return null;
   }
 
-  /// Songs of a watch playlist id.
+  /// Songs of a watch playlist id. 'all' = every song on the phone.
   List<Song> songsOf(String id) {
+    if (id == 'all') return _library.songs.where(_sendable).toList();
     final ids = id == 'liked' ? _user.liked : (_playlists.byId(id)?.songIds ?? const <String>[]);
     return [for (final sid in ids) ?_library.byId(sid)];
   }
@@ -181,7 +198,11 @@ class WatchBridge extends ChangeNotifier {
           for (final e in onWatch.entries)
             {
               'id': e.key,
-              'name': e.key == 'liked' ? 'Liked Songs' : (_playlists.byId(e.key)?.name ?? e.value),
+              'name': switch (e.key) {
+                'liked' => 'Liked Songs',
+                'all' => 'Everything',
+                _ => _playlists.byId(e.key)?.name ?? e.value,
+              },
               'keys': [for (final s in songsOf(e.key)) SyncService.keyOf(s)],
             },
         ],

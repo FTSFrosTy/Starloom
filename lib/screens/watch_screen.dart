@@ -50,6 +50,7 @@ class _WatchScreenState extends State<WatchScreen> {
       listenable: Listenable.merge([w, scope.playlists, scope.user]),
       builder: (context, _) {
         final lists = <(String, String, int)>[
+          ('all', 'Everything on this iPhone', w.songsOf('all').length),
           ('liked', 'Liked Songs', scope.user.liked.length),
           for (final pl in scope.playlists.playlists) (pl.id, pl.name, pl.songIds.length),
         ];
@@ -85,7 +86,8 @@ class _WatchScreenState extends State<WatchScreen> {
                   ],
                   const SizedBox(height: 10),
                   Text(
-                    'Turn a playlist on to copy it to the watch. Then on the watch: open Starloom, connect AirPods, and play. '
+                    'Turn on "Everything" to keep the watch in sync with every song on this phone, or pick playlists. '
+                    'New songs copy over by themselves whenever Starloom is open. Then on the watch: open Starloom, connect AirPods, and play. '
                     'Copying goes faster with the watch on its charger. Ogg/Opus files are skipped (the watch can\'t play them).',
                     style: Clay.book(13.5),
                   ),
@@ -111,7 +113,10 @@ class _WatchScreenState extends State<WatchScreen> {
                 contentPadding: const EdgeInsets.symmetric(horizontal: 20),
                 secondary: _busy == id
                     ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(id == 'liked' ? Icons.favorite_rounded : Icons.queue_music_rounded, color: id == 'liked' ? Clay.rose : Clay.ash),
+                    : Icon(
+                        switch (id) { 'liked' => Icons.favorite_rounded, 'all' => Icons.library_music_rounded, _ => Icons.queue_music_rounded },
+                        color: id == 'liked' ? Clay.rose : (id == 'all' ? Clay.candle : Clay.ash),
+                      ),
                 title: Text(name, style: TextStyle(color: Clay.bone, fontWeight: FontWeight.w600)),
                 subtitle: Text(
                   [
