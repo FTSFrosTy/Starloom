@@ -1,0 +1,69 @@
+# Builds "Starloom Installer": a Windows sideloader that can also put the
+# Apple Watch part of Starloom on the watch (Sideloadly strips it with a free
+# Apple ID). Built from source, pinned to a reviewed commit of the open-source
+# iloader fork with Apple Watch support (AndreySemjonov/iloader, based on
+# nab138/iloader), so nothing comes from a random download.
+#
+# Run it from Actions › Build watch installer › Run workflow. The .exe lands
+# on the Releases page under "watch-installer".
+name: Build watch installer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  ILOADER_REPO: AndreySemjonov/iloader
+  ILOADER_COMMIT: 2d13485ef2d7107b2bc2ec6cdb5f54ce5729ef70
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.ILOADER_REPO }}
+          ref: ${{ env.ILOADER_COMMIT }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - uses: ilammy/msvc-dev-cmd@v1
+      - run: choco install strawberryperl make --no-progress
+      - uses: oven-sh/setup-bun@v2
+      - name: Test and build
+        shell: pwsh
+        run: ./scripts/Build-Windows.ps1 -BuildExecutable
+      - name: Rename
+        shell: pwsh
+        run: |
+          Copy-Item artifacts/windows/iloader.exe artifacts/windows/Starloom-Watch-Installer.exe
+          Get-ChildItem artifacts/windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: watch-installer
+          path: artifacts/windows/*
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: watch-installer
+          path: out
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete watch-installer --yes --cleanup-tag || true
+          cat > notes.md <<NOTES
+          Windows tool to install Starloom on your iPhone **and Apple Watch** with a free Apple ID.
+
+          Built from source in GitHub Actions: ${ILOADER_REPO}@${ILOADER_COMMIT::7} (unofficial iloader fork with Apple Watch support, GPL).
+          NOTES
+          gh release create watch-installer out/Starloom-Watch-Installer.exe out/BUILD.json out/SHA256SUMS.txt \
+            --title "Starloom Watch Installer (Windows)" --notes-file notes.md --target main --latest=false
