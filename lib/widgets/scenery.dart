@@ -160,7 +160,8 @@ class _SetPainter extends CustomPainter {
 
     // Stars, each twinkling on its own beat.
     final star = Paint();
-    for (var i = 0; i < 46; i++) {
+    final stars = (w * h / 9000).round().clamp(46, 260);
+    for (var i = 0; i < stars; i++) {
       final x = (clayNoise(i, 1, 5) * 0.5 + 0.5) * w;
       final y = (clayNoise(i, 2, 5) * 0.5 + 0.5) * h * 0.62;
       final on = (f + i * 3) % 17 != 0;
@@ -169,7 +170,7 @@ class _SetPainter extends CustomPainter {
     }
 
     // Crooked moon with a glow.
-    final mr = math.min(w, h) * 0.13;
+    final mr = math.min(math.min(w, h) * 0.13, 120.0);
     final mc = Offset(w * 0.78, h * 0.13);
     canvas.drawCircle(
       mc,

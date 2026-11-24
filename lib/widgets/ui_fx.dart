@@ -122,7 +122,8 @@ class _UiFxState extends State<UiFx> with SingleTickerProviderStateMixin {
   }
 
   void _seed(Size size) {
-    final n = size.width >= 860 ? 30 : 18;
+    // Same density on a phone and a 1440p monitor (more motes on big screens).
+    final n = (size.width * size.height / 26000).round().clamp(18, 110);
     _motes.clear();
     for (var i = 0; i < n; i++) {
       _motes.add(_spawn(size, anywhere: true));
@@ -141,7 +142,8 @@ class _UiFxState extends State<UiFx> with SingleTickerProviderStateMixin {
             : size.height + 10;
     final vx = sideways ? 14 + _rnd.nextDouble() * 22 : (_rnd.nextDouble() - 0.5) * 12;
     final vy = falls ? 14 + _rnd.nextDouble() * 22 : (sideways ? (_rnd.nextDouble() - 0.5) * 6 : -(10 + _rnd.nextDouble() * 22));
-    final sz = theme == 'harvest' ? 4.0 + _rnd.nextDouble() * 3 : 1.4 + _rnd.nextDouble() * 2.4;
+    final big = (size.shortestSide / 700).clamp(1.0, 2.0);
+    final sz = (theme == 'harvest' ? 4.0 + _rnd.nextDouble() * 3 : 1.4 + _rnd.nextDouble() * 2.4) * big;
     return _Mote(x, y, vx, vy, sz, _rnd.nextInt(1 << 20));
   }
 
@@ -233,7 +235,7 @@ class _FxPainter extends CustomPainter {
     // Edge glow breathing with the bass (and a little on every kick).
     final glow = s._show * (0.05 + 0.2 * bass + 0.1 * s._kick);
     if (glow > 0.005) {
-      final w = 70 + 50 * bass;
+      final w = (70 + 50 * bass) * (size.shortestSide / 800).clamp(1.0, 2.2);
       void edge(Rect r, Alignment from, Alignment to) {
         canvas.drawRect(
           r,
@@ -302,7 +304,7 @@ class _FxPainter extends CustomPainter {
       final crumb = Paint();
       for (var i = 0; i < 16; i++) {
         final a = -math.pi * (0.05 + 0.9 * (i / 15)) + clayNoise(b.seed, i, 1) * 0.15;
-        final dist = (60 + 90 * (clayNoise(b.seed, i, 2) * 0.5 + 0.5)) * ease;
+        final dist = (60 + 90 * (clayNoise(b.seed, i, 2) * 0.5 + 0.5)) * ease * (size.width / 900).clamp(1.0, 2.2);
         final c = b.at + Offset(math.cos(a) * dist * 1.6, math.sin(a) * dist) + Offset(0, 60 * t * t);
         crumb.color = (i.isEven ? accent : Clay.pumpkin).withValues(alpha: 0.85 * fade);
         canvas.drawOval(Rect.fromCenter(center: c, width: 7 * fade + 2, height: 5 * fade + 2), crumb);
