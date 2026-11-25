@@ -12,7 +12,7 @@ import 'home_shell.dart';
 
 /// Big header + Play/Shuffle + song list. Used by albums, artists,
 /// playlists, Liked Songs and the "recently played" style lists.
-class CollectionView extends StatelessWidget {
+class CollectionView extends StatefulWidget {
   const CollectionView({
     super.key,
     required this.title,
@@ -41,7 +41,30 @@ class CollectionView extends StatelessWidget {
   final String emptyText;
 
   @override
+  State<CollectionView> createState() => _CollectionViewState();
+}
+
+class _CollectionViewState extends State<CollectionView> {
+  final _search = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final title = widget.title, subtitle = widget.subtitle, art = widget.art, songs = widget.songs;
+    final actions = widget.actions, numbered = widget.numbered, onRemove = widget.onRemove;
+    final footer = widget.footer, extraHeader = widget.extraHeader, emptyText = widget.emptyText;
+    // Search inside this playlist / album: rows keep their real position,
+    // so playing a found song still plays the whole list from there.
+    final words = _query.toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    final shown = words.isEmpty
+        ? List<int>.generate(songs.length, (i) => i)
+        : [for (var i = 0; i < songs.length; i++) if (words.every(songs[i].searchKey.contains)) i];
     final scope = AppScope.of(context);
     final wide = isWide(context);
     final canPop = Navigator.of(context).canPop();
@@ -102,6 +125,39 @@ class CollectionView extends StatelessWidget {
           ),
         SliverToBoxAdapter(child: header),
         if (extraHeader != null) SliverToBoxAdapter(child: extraHeader),
+        if (songs.length > 1)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(wide ? 28 : 16, 0, wide ? 28 : 16, 8),
+              child: TextField(
+                controller: _search,
+                onChanged: (v) => setState(() => _query = v),
+                style: TextStyle(color: Clay.bone),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: 'Search in $title',
+                  hintStyle: TextStyle(color: Clay.ash),
+                  prefixIcon: Icon(Icons.search_rounded, color: Clay.ash),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: Icon(Icons.close_rounded, color: Clay.ash, size: 18),
+                          onPressed: () => setState(() {
+                            _search.clear();
+                            _query = '';
+                          }),
+                        ),
+                  filled: true,
+                  fillColor: Clay.bruise.withValues(alpha: 0.75),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                ),
+              ),
+            ),
+          ),
+        if (words.isNotEmpty && shown.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(padding: const EdgeInsets.all(24), child: Text('No songs match "$_query"', textAlign: TextAlign.center, style: Clay.book(16))),
+          ),
         if (songs.isEmpty)
           SliverToBoxAdapter(
             child: Padding(padding: const EdgeInsets.all(32), child: Text(emptyText, textAlign: TextAlign.center, style: Clay.book(17))),
@@ -109,13 +165,17 @@ class CollectionView extends StatelessWidget {
         SliverFixedExtentList(
           itemExtent: kSongRowHeight,
           delegate: SliverChildBuilderDelegate(
-            (context, i) => SongTile(
-              song: songs[i],
-              leadingNumber: numbered ? (songs[i].trackNo > 0 ? songs[i].trackNo : i + 1) : null,
-              onTap: () => scope.player.playSongs(songs, i, from: title),
-              onRemove: onRemove == null ? null : () => onRemove!(i),
-            ),
-            childCount: songs.length,
+            (context, k) {
+              final i = shown[k];
+              return SongTile(
+                key: ValueKey(i),
+                song: songs[i],
+                leadingNumber: numbered ? (songs[i].trackNo > 0 ? songs[i].trackNo : i + 1) : null,
+                onTap: () => scope.player.playSongs(songs, i, from: title),
+                onRemove: onRemove == null ? null : () => onRemove(i),
+              );
+            },
+            childCount: shown.length,
           ),
         ),
         if (footer != null) SliverToBoxAdapter(child: footer),
