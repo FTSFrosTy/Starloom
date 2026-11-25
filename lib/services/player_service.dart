@@ -212,6 +212,21 @@ class PlayerService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Puts back the last session's queue, paused at the same spot.
+  Future<void> restoreQueue(List<Song> songs, int index, {Duration position = Duration.zero, String? from, int queuedAhead = 0}) async {
+    if (songs.isEmpty) return;
+    playingFrom = from;
+    if (player.state.playback.shuffle) await player.setShuffle(false);
+    await player.openAll(songs.map(_media).toList(), index: index.clamp(0, songs.length - 1), play: false);
+    // The file has to be open before mpv can seek in it.
+    for (var i = 0; i < 40 && duration == Duration.zero; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    if (position > const Duration(seconds: 1)) await player.seek(position);
+    this.queuedAhead = queuedAhead.clamp(0, songs.length);
+    notifyListeners();
+  }
+
   /// Shuffles the queue but keeps the playing song first, so every other
   /// song is still ahead of you.
   Future<void> _shuffleAroundCurrent() async {

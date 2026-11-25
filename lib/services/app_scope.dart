@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import '../theme/palette.dart';
 import '../widgets/clay.dart';
+import '../widgets/panels.dart';
 import 'eq.dart';
 import 'library.dart';
 import 'player_service.dart';
@@ -31,6 +32,9 @@ class AppPrefs extends ChangeNotifier {
   bool shuffle = false;
   String loop = 'off';
 
+  /// PC side panels (Your Library collapsed, right panel open + tab).
+  Map<String, Object?> panels = const {};
+
   StarTheme get theme => kThemes.firstWhere((t) => t.id == themeId, orElse: () => kThemes.first);
 
   Future<void> init() async {
@@ -44,6 +48,7 @@ class AppPrefs extends ChangeNotifier {
       animateUnfocused = (raw['animateUnfocused'] as bool?) ?? false;
       shuffle = (raw['shuffle'] as bool?) ?? false;
       loop = (raw['loop'] as String?) ?? 'off';
+      panels = ((raw['panels'] as Map?) ?? const {}).cast<String, Object?>();
     }
     StopMotion.instance.enabled = !reduceMotion;
     StopMotion.instance.keepWhenUnfocused = animateUnfocused;
@@ -59,7 +64,27 @@ class AppPrefs extends ChangeNotifier {
         'animateUnfocused': animateUnfocused,
         'shuffle': shuffle,
         'loop': loop,
+        'panels': panels,
       };
+
+  /// Restores the PC panels and keeps them saved as they change.
+  void attachPanels() {
+    Panels.leftCollapsed.value = panels['leftCollapsed'] == true;
+    Panels.rightOpen.value = panels['rightOpen'] != false;
+    Panels.rightTab.value = RightTab.values.where((t) => t.name == panels['rightTab']).firstOrNull ?? RightTab.nowPlaying;
+    void save() {
+      panels = {
+        'leftCollapsed': Panels.leftCollapsed.value,
+        'rightOpen': Panels.rightOpen.value,
+        'rightTab': Panels.rightTab.value.name,
+      };
+      _storage.write('prefs.json', _json());
+    }
+
+    Panels.leftCollapsed.addListener(save);
+    Panels.rightOpen.addListener(save);
+    Panels.rightTab.addListener(save);
+  }
 
   /// Saved quietly (no rebuild).
   void rememberModes(bool shuffle, String loop) {

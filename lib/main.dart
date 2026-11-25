@@ -15,6 +15,7 @@ import 'services/player_service.dart';
 import 'services/playlists.dart';
 import 'services/storage.dart';
 import 'services/connect.dart';
+import 'services/session.dart';
 import 'services/sync.dart';
 import 'services/watch_bridge.dart';
 import 'services/user_data.dart';
@@ -51,6 +52,7 @@ Future<void> main() async {
     loop: Loop.values.where((l) => l.name == prefs.loop).firstOrNull ?? Loop.off,
   );
   player.onModesChanged = (shuffle, loop) => prefs.rememberModes(shuffle, loop.name);
+  prefs.attachPanels();
   player.onSongStarted = user.recordPlay;
   Beat.instance.attach(player.player);
   final sync = SyncService(storage, library, playlists, user, player);
@@ -73,7 +75,9 @@ Future<void> main() async {
   ));
 
   // Loads the cached library instantly, then rescans in the background.
+  final session = SessionKeeper(storage, library, player);
   unawaited(library.init().then((_) async {
+    await session.restore();
     await sync.init();
     await connect.init();
     await watch.init();
