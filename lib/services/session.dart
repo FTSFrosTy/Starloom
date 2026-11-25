@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/widgets.dart';
 
@@ -92,7 +93,8 @@ class SessionKeeper {
       'queuedAhead': _player.queuedAhead,
     };
     // Skip identical saves (paused, nothing changed).
-    final key = '${data['current']}|${data['posMs']! as int ~/ 1000}|${q.length}|${data['from']}';
+    final secs = _player.position.inSeconds;
+    final key = '${data['current']}|$secs|${q.length}|${data['from']}';
     if (key == _lastSaved) return;
     _lastSaved = key;
     _storage.write('session.json', data);
