@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -27,6 +29,54 @@ import 'widgets/ui_fx.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Anything that goes wrong is written to crash.log next to the app's data,
+  // and a startup failure shows the error on screen instead of nothing.
+  FlutterError.onError = (d) {
+    FlutterError.presentError(d);
+    _log('FlutterError: ${d.exceptionAsString()}\n${d.stack}');
+  };
+  PlatformDispatcher.instance.onError = (e, st) {
+    _log('Uncaught: $e\n$st');
+    return true;
+  };
+  try {
+    await _start();
+  } catch (e, st) {
+    _log('Startup failed: $e\n$st');
+    runApp(_StartupError('$e\n\n$st'));
+  }
+}
+
+void _log(String text) {
+  try {
+    final base = Platform.isWindows ? Platform.environment['APPDATA'] : null;
+    final dir = Directory(base != null ? '$base/com.ftsfrosty/starloom/starloom' : Directory.systemTemp.path);
+    dir.createSync(recursive: true);
+    File('${dir.path}/crash.log').writeAsStringSync('${DateTime.now()}  $text\n\n', mode: FileMode.append, flush: true);
+  } catch (_) {}
+}
+
+class _StartupError extends StatelessWidget {
+  const _StartupError(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          backgroundColor: const Color(0xFF15101F),
+          body: Padding(
+            padding: const EdgeInsets.all(24),
+            child: SelectableText(
+              'Starloom couldn\'t start. Send Claude a screenshot of this:\n\n$text',
+              style: const TextStyle(color: Color(0xFFEDE3D1), fontSize: 13),
+            ),
+          ),
+        ),
+      );
+}
+
+Future<void> _start() async {
   MpvAudioKit.ensureInitialized();
 
   LicenseRegistry.addLicense(() async* {
